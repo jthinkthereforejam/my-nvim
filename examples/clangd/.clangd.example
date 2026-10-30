@@ -1,0 +1,3 @@
+# Optional project-specific settings. Copy to .clangd and adapt to your project.
+CompileFlags:
+  Add: [-DPROJECT_FEATURE=1]
