@@ -28,7 +28,8 @@ function M.setup()
   vim.opt.completeopt = { 'menu', 'menuone', 'noselect' }
   vim.schedule(function() vim.opt.clipboard = 'unnamedplus' end)
   vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>', { desc = 'Clear search highlight', silent = true })
-  for _, direction in ipairs({ 'h', 'j', 'k', 'l' }) do
+  -- Ctrl+J belongs to the terminal panel; Ctrl+W j still moves down.
+  for _, direction in ipairs({ 'h', 'k', 'l' }) do
     vim.keymap.set('n', '<C-' .. direction .. '>', '<C-w>' .. direction, { desc = 'Focus adjacent window' })
   end
   vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Diagnostic list' })

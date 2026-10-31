@@ -9,6 +9,7 @@
 - blink.cmp：LSP、路径、原生 snippets、buffer 补全；使用 Lua 匹配器，命令行交给 Neovim 原生补全。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
+- 原生集成终端：底部约 1/3 面板，按项目保留多个 Shell 会话，显示/隐藏时保留任务与输出。
 - 全局默认不自动格式化，包括保存和 LSP 输入格式化。手动格式化可调用 `vim.lsp.buf.format()`；Jai 使用 `:Jai format`。
 
 ## 安装
@@ -57,8 +58,23 @@ bash scripts/install.sh
 | `jacket` | Jacket 工具链目录，内含 jailsp、jaic、jaifmt 和 stdlib |
 | `path` | 加到 Neovim 进程 PATH 的工具目录列表 |
 | `proxy` | 可选 HTTP 代理，仅作用于 Neovim 及其下载子进程 |
+| `terminal.shell` | 可选 Shell argv 数组；Windows 默认 `{ 'powershell.exe', '-NoLogo' }`，macOS 默认用户登录 Shell |
+| `terminal.height` | 终端面板高度占比，默认 `0.33` |
+| `terminal.toggle_key` | 显示/隐藏快捷键，默认 `'<C-j>'` |
 
 使用 `/` 或 Lua `[[...]]` 书写 Windows 路径，避免反斜杠转义。临时代理或机器目录不应写进公共模块。
+
+终端设置同样放在 `local.lua` 返回的 table 中，例如在 Windows 上：
+
+```lua
+terminal = {
+  shell = { 'powershell.exe', '-NoLogo' },
+  height = 0.33,
+  toggle_key = '<C-j>',
+},
+```
+
+不指定 `terminal.shell` 时使用当前平台默认值；macOS 可省略它，沿用用户登录 Shell。修改 `toggle_key` 后，下面的 `Ctrl-j` 操作改用该按键。
 
 Roslyn 固定 **5.12.0-1.26453.19**，通过微软 Azure feed 安装到 `stdpath('data')/tools/roslyn/<版本>`。Jacket 固定 **0.30.4**，默认安装到 `stdpath('data')/tools/jacket/0.30.4`，下载时验证仓库中固定的官方 SHA-256。设置 `jacket` 可复用已有完整工具链；服务器与 stdlib 应来自同一版本。
 
@@ -92,6 +108,10 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `[d` / `]d` | 上一条 / 下一条诊断 |
 | `<leader>q` | 诊断列表 |
 | `<leader>th` | 切换当前 buffer 的内联提示（服务器支持时） |
+| `Ctrl-j` / `<leader>tt` | 显示 / 隐藏终端面板；`Ctrl-j` 在普通、插入和终端模式均可用 |
+| `<leader>tn` / `<leader>ts` | 新建终端 / 选择当前项目的终端 |
+| `<leader>tx` | 明确关闭当前终端并结束对应 Shell |
+| `Ctrl-w j` | 普通模式中移到下方窗口，保留原有窗口导航 |
 | `<leader>sf` / `<leader>sF` | FFF 项目文件 / Telescope 文件回退 |
 | `<leader>sg` / `<leader>sw` | 项目内容 / 当前词搜索 |
 | `<leader>sh` / `<leader>sr` | 帮助 / 恢复 Telescope |
@@ -101,6 +121,17 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向键选择，`Ctrl-y` 确认，`Ctrl-e` 取消。代码中的 Tab 保留原有缩进/片段行为。
 
 `:edit`、`:cd` 等命令行使用内置 Shell 风格补全：Tab 补公共前缀，方向键选择，Tab 确认目录并进入下一层；文件候选确认后仍需 Enter 执行命令。菜单关闭时，上下方向键继续浏览历史。
+
+## 集成终端
+
+在代码区按 `Ctrl-j`，底部打开约占窗口高度 1/3 的终端，上方代码保持可见。Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 Shell。新 Shell 的工作目录取当前文件所属 Git 根，没有 Git 时取 Neovim 当前工作目录。
+
+1. 在终端输入构建或运行命令。再次按 `Ctrl-j` 隐藏面板并返回代码；运行中的任务继续执行，Shell 当前目录、历史和输出保持不变。
+2. 再按 `Ctrl-j` 显示同一会话。面板可见时，即使焦点在代码区，这个按键也会将它隐藏。
+3. 用 `<leader>tn` 为当前项目另开一个终端；`<leader>ts` 打开 Telescope 列表，在已有会话和 `New terminal` 之间选择。在另一项目的代码 buffer 中操作时，会切换到该项目最近使用的终端。
+4. 需要结束会话时用 `<leader>tx`。它关闭对应 Shell 及其任务；隐藏面板请使用 `Ctrl-j`。
+
+也可直接执行 `:TerminalToggle`、`:TerminalNew`、`:TerminalSelect`、`:TerminalClose`，分别对应切换、新建、选择和关闭。Shell 退出后保留输出并标记为 `Ended`，不会自动重启；用新建命令再次启动 Shell。会话仅在本次 Neovim 进程内保留，退出 Neovim 后不恢复。
 
 ## FFF 生命周期与回退
 
@@ -143,7 +174,27 @@ nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
 
+终端面板测试使用完整配置，在仓库根目录运行。Windows PowerShell：
+
+```powershell
+nvim --headless -u .\init.lua -i NONE -l .\tests\terminal.lua
+nvim --headless -u .\init.lua -i NONE -l .\tests\terminal_keys.lua
+```
+
+macOS：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -l tests/terminal.lua
+nvim --headless -u ./init.lua -i NONE -l tests/terminal_keys.lua
+```
+
+手动验收时，在一个终端切换目录并运行持续任务，隐藏后确认代码区可编辑，再显示确认任务和目录保留；新建第二个终端并从列表切回，切换项目检查会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
+
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-01 集成终端验收
+
+Windows PowerShell 的会话复用、隐藏期间输出、目录保持、项目隔离、多会话选择、退出输出保留和窗口恢复均通过；普通、插入、终端模式的实际 Ctrl-j 分发及返回模式也通过。在真实 Windows Terminal 中另行确认了隐藏后 Shell 持续运行、重开复用原 job，且原代码文件没有修改。macOS 分支尚未实机验证。
 
 ### 2026-10-30 Windows 实机验收
 

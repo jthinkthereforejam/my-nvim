@@ -11,6 +11,12 @@ return {
   -- jacket = 'D:/tools/jacket/0.30.4',
   -- Extra tool directories to prepend to Neovim's process PATH:
   -- path = { 'D:/tools/bin' },
+  -- Optional integrated terminal settings (shell is an argv array):
+  -- terminal = {
+  --   shell = { 'powershell.exe', '-NoLogo' }, -- macOS: { '/bin/zsh', '-l' }
+  --   height = 0.33, -- fraction of the editor height
+  --   toggle_key = '<C-j>', -- shared by normal, insert, and terminal modes
+  -- },
   -- Optional proxy used by this Neovim process when downloading dependencies:
   -- proxy = 'http://127.0.0.1:7890',
 }

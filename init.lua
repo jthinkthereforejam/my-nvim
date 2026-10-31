@@ -23,4 +23,5 @@ require('config.whichkey').setup(machine)
 require('config.treesitter').setup(machine)
 require('config.lsp').setup(machine)
 require('config.search').setup(machine)
+require('config.terminal').setup(machine)
 vim.g.my_nvim_ready = true

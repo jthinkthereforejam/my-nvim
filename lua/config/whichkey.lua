@@ -19,7 +19,7 @@ function M.setup(_machine)
     spec = {
       { 'gr', group = 'LSP' },
       { '<leader>s', group = 'Search' },
-      { '<leader>t', group = 'Toggle' },
+      { '<leader>t', group = 'Terminal / Toggle' },
     },
   })
 end
