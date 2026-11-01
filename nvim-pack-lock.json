@@ -20,6 +20,11 @@
       "src": "https://github.com/matteopolak/jacket.nvim",
       "version": "'46e43ce67c239de1cb2529f0b8401eaa2355d606'"
     },
+    "minuet-ai.nvim": {
+      "rev": "3b0a4c5f97b7124d94302c608fbe01c0270d4fbe",
+      "src": "https://github.com/milanglacier/minuet-ai.nvim",
+      "version": "'3b0a4c5f97b7124d94302c608fbe01c0270d4fbe'"
+    },
     "nvim-lspconfig": {
       "rev": "460bb34e7be114f1fda7815781696bc701e60f83",
       "src": "https://github.com/neovim/nvim-lspconfig",

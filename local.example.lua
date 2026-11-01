@@ -23,6 +23,14 @@ return {
   --   state_dir = 'D:/local-state/my-nvim', -- optional; default stdpath('state')/my-nvim
   --   launcher = { 'wezterm', 'start', '--cwd', '{cwd}', '--', '{nvim}' },
   -- },
+  -- Optional DeepSeek inline completion. A nonempty DEEPSEEK_API_KEY takes priority.
+  -- Keep the real key in local.lua or your local environment, never in Git/chat.
+  -- deepseek = {
+  --   enabled = true,
+  --   api_key = 'YOUR_DEEPSEEK_API_KEY', -- optional when the environment variable is set
+  --   endpoint = 'https://api.deepseek.com/beta/completions',
+  --   model = 'deepseek-flash',
+  -- },
   -- Optional proxy used by this Neovim process when downloading dependencies:
   -- proxy = 'http://127.0.0.1:7890',
 }

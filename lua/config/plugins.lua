@@ -10,6 +10,7 @@ function M.setup()
     { src = 'https://github.com/nvim-telescope/telescope.nvim', version = '40aedd8a68c78a656a10a8d62d80c54af59420fb' },
     { src = 'https://github.com/dmtrKovalenko/fff', name = 'fff.nvim', version = 'v0.11.0' },
     { src = 'https://github.com/saghen/blink.cmp', version = 'v1.10.2' },
+    { src = 'https://github.com/milanglacier/minuet-ai.nvim', version = '3b0a4c5f97b7124d94302c608fbe01c0270d4fbe' },
     { src = 'https://github.com/folke/which-key.nvim', version = '3aab2147e74890957785941f0c1ad87d0a44c15a' },
     { src = 'https://github.com/neovim/nvim-lspconfig', version = '460bb34e7be114f1fda7815781696bc701e60f83' },
     { src = 'https://github.com/seblyng/roslyn.nvim', version = '059c5791a19a00049736d02ad2855a346433cf54' },

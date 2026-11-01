@@ -8,6 +8,7 @@
 - `vim.pack` 管理插件；版本及实际提交记在 `nvim-pack-lock.json`，普通启动不更新插件。
 - Snacks 首页显示最近项目，系统对话框打开文件夹/文件；每个项目使用独立 Neovim 窗口，persistence 恢复代码布局。
 - blink.cmp：LSP、路径、原生 snippets、buffer 补全；使用 Lua 匹配器，命令行交给 Neovim 原生补全。
+- 可选 DeepSeek FIM 灰字补全；与普通补全菜单分开显示，配置本机 Key 后启用。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
 - 原生集成终端：底部约 1/3 面板，按项目保留多个 Shell 会话，显示/隐藏时保留任务与输出。
@@ -65,6 +66,10 @@ bash scripts/install.sh
 | `project.terminal_profile` | Windows Terminal 配置项名称，默认 `'Neovim'` |
 | `project.launcher` | 可选的新窗口启动器 argv 模板，覆盖平台默认启动器，见下文 |
 | `project.state_dir` | 本机项目历史与会话的存储根目录，默认 `stdpath('state')/my-nvim` |
+| `deepseek.enabled` | 是否启用 AI 补全；缺 Key、curl 或插件时保持普通补全行为 |
+| `deepseek.api_key` | 可选本机 Key，非空 `DEEPSEEK_API_KEY` 环境变量优先 |
+| `deepseek.endpoint` | FIM 端点，默认 `https://api.deepseek.com/beta/completions` |
+| `deepseek.model` | 模型，默认 `deepseek-flash` |
 
 使用 `/` 或 Lua `[[...]]` 书写 Windows 路径，避免反斜杠转义。临时代理或机器目录不应写进公共模块。
 
@@ -153,9 +158,46 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `<leader><leader>` | 已打开 buffer |
 | `Ctrl-d` / `Ctrl-u` | which-key 菜单向下 / 向上滚动 |
 
-blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向键选择，`Ctrl-y` 确认，`Ctrl-e` 取消。代码中的 Tab 保留原有缩进/片段行为。
+blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向键选择，`Ctrl-y` 确认，`Ctrl-e` 取消。AI 可用且启用时，Tab 优先确认可见的普通补全菜单，再接受 AI 灰字，最后执行片段跳转 / 原有 Tab 行为；`Ctrl-l` 直接尝试接受 AI，无候选时沿用原键。`Esc` 清除 AI 灰字并正常退出插入模式。AI 关闭或不可用时保留原有 Tab、`Ctrl-l` 行为；Enter 与 `Ctrl-y` 的行为不变。
 
 `:edit`、`:cd` 等命令行使用内置 Shell 风格补全：Tab 补公共前缀，方向键选择，Tab 确认目录并进入下一层；文件候选确认后仍需 Enter 执行命令。菜单关闭时，上下方向键继续浏览历史。
+
+## DeepSeek 灰字补全
+
+在本机环境或被 Git 忽略的 `local.lua` 中配置 Key，不需要将真实 Key 发到聊天中。环境变量 `DEEPSEEK_API_KEY` 优先于 `deepseek.api_key`。例如在 `local.lua` 返回的 table 内添加：
+
+```lua
+deepseek = {
+  enabled = true,
+  api_key = 'YOUR_DEEPSEEK_API_KEY',
+  endpoint = 'https://api.deepseek.com/beta/completions',
+  model = 'deepseek-flash',
+},
+```
+
+环境变量方式：Windows PowerShell 设置用户变量后，关闭并重新打开 Windows Terminal，再启动 Neovim：
+
+```powershell
+[Environment]::SetEnvironmentVariable('DEEPSEEK_API_KEY', 'YOUR_DEEPSEEK_API_KEY', 'User')
+```
+
+macOS 将下面一行加入实际使用的 Shell 启动文件（例如 `~/.zshrc`），然后重开 Terminal：
+
+```bash
+export DEEPSEEK_API_KEY='YOUR_DEEPSEEK_API_KEY'
+```
+
+占位符需仅在本机替换。Windows 新项目窗口会重新读取用户环境；只在一个 PowerShell 中临时设置 `$env:DEEPSEEK_API_KEY`，不能保证通过“打开项目”传入新窗口。也可直接使用各窗口共同读取的 `local.lua`。
+
+启用后，插入模式停顿 **800 ms** 请求一条 FIM 候选，将当前 buffer 光标前最多 **6000 字符**、后最多 **2000 字符**发送到配置端点；最多返回 **256 tokens**，请求最长 **5 秒**。灰字接受前不写入代码；普通 LSP / 路径补全仍由 blink.cmp 提供。没有 Key、依赖不可用或关闭 AI 时，原有编辑与补全照常使用。请求上下文经插件临时 JSON 文件传给 curl，完成或取消后清理；错误提示不输出 Key 或代码。
+
+| 命令 | 功能 |
+| --- | --- |
+| `:AICompletionToggle` | 切换当前实例的 AI 补全，重新检查配置和依赖 |
+| `:AICompletionStatus` | 查看启用状态与原因，不显示 Key |
+| `:AICompletionTrigger` | 进入插入模式并手动请求当前光标处的候选 |
+
+首次使用可在代码文件中输入后停顿，检查灰字、Tab / `Ctrl-l` 接受和 Esc 取消；同时打开普通补全菜单验证 Tab 的菜单优先级。当前验收使用本地 mock 端点，未调用真实 DeepSeek 付费服务；macOS 仍需实机验证。
 
 ## 集成终端
 
@@ -209,6 +251,22 @@ nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
 
+DeepSeek 自动验收需要 Python 3，使用 `tests/ai_completion_mock.py` 自动启动本机 HTTP 服务，不需要真实 Key，也不访问 DeepSeek。可用 `MY_NVIM_TEST_PYTHON` 环境变量指定 Python 可执行文件。Windows PowerShell（仓库根目录）：
+
+```powershell
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/ai_completion.lua')"
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/ai_completion_keys.lua')"
+```
+
+macOS：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/ai_completion.lua')"
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/ai_completion_keys.lua')"
+```
+
+脚本自行退出并清理服务，验证真实 Minuet / curl 请求、灰字渲染、过期响应处理和按键分发。上下文及假 Key 的测试文件位于 Neovim cache 下。
+
 首页、项目会话与原生启动器测试（在仓库根目录运行，Windows PowerShell / macOS Shell 通用）：
 
 ```bash
@@ -237,6 +295,11 @@ nvim --headless -u ./init.lua -i NONE -l tests/terminal_keys.lua
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
 
+### 2026-11-01 DeepSeek 可选补全验收
+
+Windows 的真实 Minuet / curl / 本机 HTTP 模拟端点与嵌入式 UI 测试通过：无 Key 零请求、环境变量优先、敏感 buffer 排除、Unicode 上下文长度、800ms 防抖、过期与接受竞态、取消后断开 HTTP、401 / 429 / 500 / 非法响应、错误节流和 5 秒超时均已验证。真实按键覆盖 Tab 菜单优先、Ctrl-l、Ctrl-y、Esc、Enter、片段和命令行回退。
+
+另在新开的 Windows Terminal 实例中，通过 RPC 检查外部 TUI：C++ / Rust / C# / Jai 的语言服务器均初始化并支持普通补全，各文件中 Minuet 的行内灰字标记可见；Ctrl-j 打开终端会取消 AI 请求，隐藏后 PowerShell 任务仍运行且代码未修改。测试实例及本地模拟服务均已清理，原用户实例未操作。没有配置真实 Key，因此未调用 DeepSeek 付费接口；macOS 尚未实机验证。
 ### 2026-11-01 首页与项目验收
 
 自动测试覆盖首页渲染与更新、文件参数跳过首页、目录 / 原生启动标记、空项目提示；独立进程会话恢复、父实例状态保留、并发 MRU；Unicode / 特殊字符路径、启动参数、环境隔离与对话框取消。Windows Terminal 真实窗口已确认首页显示、新窗口打开中文 / 空格 / 特殊字符目录、A 的未保存文本和后台 PowerShell 保持原样、B 跨进程恢复双文件分屏与光标、关闭 A 后 B 独立可用。真实桌面终端回归测试通过。系统对话框已验证 COM 声明编译及选择 / 取消 / 错误回调；实际对话框交互尚需手动检查。macOS 仅完成脚本静态检查与启动参数测试，尚未实机验证。

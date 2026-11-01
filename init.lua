@@ -19,6 +19,7 @@ vim.g.everforest_background = 'medium'
 vim.g.everforest_better_performance = 1
 vim.o.background = 'dark'
 vim.cmd.colorscheme('everforest')
+require('config.ai_completion').setup(machine)
 require('config.completion').setup()
 require('config.whichkey').setup(machine)
 require('config.treesitter').setup(machine)
