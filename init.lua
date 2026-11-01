@@ -28,4 +28,5 @@ require('config.search').setup(machine)
 require('config.terminal').setup(machine)
 require('config.project').setup(machine)
 require('config.welcome').setup(machine)
+require('config.autosave').setup(machine)
 vim.g.my_nvim_ready = true

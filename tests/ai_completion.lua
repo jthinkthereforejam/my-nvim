@@ -2,6 +2,8 @@
 -- Requires Python 3; MY_NVIM_TEST_PYTHON may name its executable.
 -- All HTTP traffic targets a local mock; Minuet/curl/rendering run unmodified.
 assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local H = {}
 local api, fn, uv = vim.api, vim.fn, vim.uv
 local config_root = assert(vim.g.my_nvim_root)
@@ -48,7 +50,7 @@ function H.environment(label)
     local data = { enabled = settings.enabled ~= false, endpoint = self.endpoint, model = 'deepseek-flash' }
     if settings.local_key ~= nil then data.api_key = settings.local_key end
     local state_dir = vim.fs.joinpath(self.base, 'state-' .. index)
-    local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q}); m.deepseek=vim.json.decode(%q); vim.g.ai_test_notices={}; local notify=vim.notify; vim.notify=function(msg,level,opts) local t=vim.g.ai_test_notices; t[#t+1]={message=tostring(msg),level=level}; vim.g.ai_test_notices=t; return notify(msg,level,opts) end')
+    local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.autosave={enabled=false}; m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q}); m.deepseek=vim.json.decode(%q); vim.g.ai_test_notices={}; local notify=vim.notify; vim.notify=function(msg,level,opts) local t=vim.g.ai_test_notices; t[#t+1]={message=tostring(msg),level=level}; vim.g.ai_test_notices=t; return notify(msg,level,opts) end')
       :format(config_root, config_root, state_dir, vim.json.encode(data))
     if settings.no_curl then
       early = early .. '; local executable=vim.fn.executable; vim.fn.executable=function(cmd) if cmd=="curl" or cmd=="curl.exe" then return 0 end; return executable(cmd) end'

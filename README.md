@@ -13,6 +13,7 @@
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
 - 原生集成终端：在当前窗口切换代码与终端 buffer，不改变现有分屏布局；按项目保留多个 Shell 会话，切回代码时保留任务与输出。
+- 默认自动保存：退出插入 / 替换模式后停顿 1 秒写入普通代码文件，可按实例关闭。
 - 全局默认不自动格式化，包括保存和 LSP 输入格式化。手动格式化可调用 `vim.lsp.buf.format()`；Jai 使用 `:Jai format`。
 
 ## 安装
@@ -66,6 +67,8 @@ bash scripts/install.sh
 | `project.terminal_profile` | Windows Terminal 配置项名称，默认 `'Neovim'` |
 | `project.launcher` | 可选的新窗口启动器 argv 模板，覆盖平台默认启动器，见下文 |
 | `project.state_dir` | 本机项目历史与会话的存储根目录，默认 `stdpath('state')/my-nvim` |
+| `autosave.enabled` | 是否默认启用自动保存，默认 `true` |
+| `autosave.delay_ms` | 普通模式中最后一次修改或退出插入 / 替换模式后的等待时间，默认 `1000` 毫秒 |
 | `deepseek.enabled` | 是否启用 AI 补全；缺 Key、curl 或插件时保持普通补全行为 |
 | `deepseek.api_key` | 可选本机 Key，非空 `DEEPSEEK_API_KEY` 环境变量优先 |
 | `deepseek.endpoint` | FIM 端点，默认 `https://api.deepseek.com/beta/completions` |
@@ -161,6 +164,28 @@ blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向�
 
 `:edit`、`:cd` 等命令行使用内置 Shell 风格补全：Tab 补公共前缀，方向键选择，Tab 确认目录并进入下一层；文件候选确认后仍需 Enter 执行命令。菜单关闭时，上下方向键继续浏览历史。
 
+## 自动保存
+
+默认启用：退出插入 / 替换模式后，停顿 **1 秒**自动写入已命名、可写的普通文件。普通模式中的删除、粘贴、手动格式化等修改也从最后一次变化重新计时；重新进入插入 / 替换模式会取消等待，输入期间不自动写入。代码 buffer 即使被当前窗口的终端隐藏，也会照常保存；未命名、只读和终端等特殊 buffer 不自动保存。
+
+自动保存不触发格式化；原有手动 `:write` 仍立即保存。补全菜单与 AI 灰字的预览不会写入文件，接受候选形成的实际修改沿用同一保存规则。退出时不额外补写；尚未保存的修改仍使用 Neovim 的退出确认。`:q!` 只放弃尚未保存的修改，不会撤回此前已经自动保存的内容。
+
+检测到文件被外部修改、替换或删除时，暂停该 buffer 的自动保存；不会自动创建缺失的父目录。写入失败会保留 `modified` 状态，并限制重复错误提示。先检查冲突并重新载入，或手动成功写入后，再继续自动保存。
+
+| 命令 | 功能 |
+| --- | --- |
+| `:AutoSaveToggle` | 切换当前 Neovim 实例的自动保存 |
+| `:AutoSaveStatus` | 查看启用状态及暂停原因 |
+
+默认开关与延迟可在 `local.lua` 返回的 table 中覆盖：
+
+```lua
+autosave = {
+  enabled = true,
+  delay_ms = 1000,
+},
+```
+
 ## DeepSeek 灰字补全
 
 在本机环境或被 Git 忽略的 `local.lua` 中配置 Key，不需要将真实 Key 发到聊天中。环境变量 `DEEPSEEK_API_KEY` 优先于 `deepseek.api_key`。例如在 `local.lua` 返回的 table 内添加：
@@ -252,6 +277,18 @@ nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
 
+自动保存回归测试使用 cache 下的临时文件、独立嵌入式 UI 和真实磁盘读写，不需要 Python、真实 AI Key 或外部 API；脚本自行退出并清理测试资源。Windows PowerShell（仓库根目录）：
+
+```powershell
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/autosave.lua')"
+```
+
+macOS 可运行同一测试，尚未实机验证：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/autosave.lua')"
+```
+
 DeepSeek 自动验收需要 Python 3，使用 `tests/ai_completion_mock.py` 自动启动本机 HTTP 服务，不需要真实 Key，也不访问 DeepSeek。可用 `MY_NVIM_TEST_PYTHON` 环境变量指定 Python 可执行文件。Windows PowerShell（仓库根目录）：
 
 ```powershell
@@ -296,6 +333,14 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
 
+### 2026-11-01 自动保存验收
+
+Windows Terminal 的新实例已验证：插入模式持续输入 / 停顿时不写盘，Esc 后约 1 秒保存并执行正常保存钩子；Ctrl-j 切入 PowerShell 后，隐藏代码仍可保存，后台任务输出、窗口布局与返回编辑模式保持不变。保存钩子修改另一个隐藏文件时，两个文件各自完成自动保存。直接从外部修改磁盘文件会暂停该 buffer，保留磁盘与内存两侧内容，单行提醒不会阻塞窗口。测试窗口、管道和子进程已清理，原用户实例未操作。
+
+自动保存集成测试已验证 1 秒防抖、插入 / 替换模式与重新进入取消、多 buffer 独立计时、终端遮住文件时的后台写入、命名新文件与父目录检查、只读 / 特殊 / URI / 未命名 buffer 过滤、外部修改 / 替换 / 删除冲突，以及写入失败暂停、提示限频和手动恢复。真实 Blink 候选预览 / 取消 / 接受、clangd 保存通知与手动 LSP 格式化后的延迟写入均通过；没有引入自动格式化。强制关闭窗口与整个进程都不补写待保存内容。
+
+本次还回归通过了基础 smoke（11 项）、终端与实际 Ctrl-j 按键、项目会话 / 首页启动、AI 补全按键及原生命令行路径补全。旧测试中需要保留未保存修改的场景显式关闭自动保存，新增自动保存测试使用默认开启状态。macOS 尚未实机验证，可运行上面的同套命令。
+
 ### 2026-11-01 DeepSeek 可选补全验收
 
 Windows 的真实 Minuet / curl / 本机 HTTP 模拟端点与嵌入式 UI 测试通过：无 Key 零请求、环境变量优先、敏感 buffer 排除、Unicode 上下文长度、800ms 防抖、过期与接受竞态、取消后断开 HTTP、401 / 429 / 500 / 非法响应、错误节流和 5 秒超时均已验证。真实按键覆盖 Tab 菜单优先、Ctrl-l、Ctrl-y、Esc、Enter、片段和命令行回退。
@@ -307,7 +352,7 @@ Windows 的真实 Minuet / curl / 本机 HTTP 模拟端点与嵌入式 UI 测试
 
 macOS 实机验收流程（仓库根目录）：先执行上面的三个 `project_*` / `projects.lua` 测试，再运行 `nvim` 检查首页。按 `o` 取消目录对话框，确认首页未变；再次选择含中文、空格或单引号的空目录，检查新 Terminal 窗口与空项目提示。首次启动可能需要允许 Terminal 自动化，由用户在系统提示中决定。
 
-在项目 A 中编辑文本但不保存，用 `Ctrl-j` 运行 `sleep 30; printf 'done\n'` 后隐藏；用 `:ProjectOpen /path/to/B` 打开另一个非 Git 文件夹，确认 A 的修改与任务仍在。B 打开两个文件并分屏，移动光标，执行 `:ProjectSaveSession`、`:qa`，再从首页打开 B，检查文件、光标与分屏恢复且没有终端；关闭 A 后继续编辑 B。最后分别运行 `nvim /path/to/file` 与 `nvim /path/to/B`，检查文件启动跳过首页，目录启动恢复项目。
+此项验收需要保留未保存文本：先用 `:AutoSaveStatus` 查看状态，若已启用则用 `:AutoSaveToggle` 暂停；验收后再开启。在项目 A 中编辑文本但不保存，用 `Ctrl-j` 运行 `sleep 30; printf 'done\n'` 后隐藏；用 `:ProjectOpen /path/to/B` 打开另一个非 Git 文件夹，确认 A 的修改与任务仍在。B 打开两个文件并分屏，移动光标，执行 `:ProjectSaveSession`、`:qa`，再从首页打开 B，检查文件、光标与分屏恢复且没有终端；关闭 A 后继续编辑 B。最后分别运行 `nvim /path/to/file` 与 `nvim /path/to/B`，检查文件启动跳过首页，目录启动恢复项目。
 
 ### 2026-11-01 当前窗口终端验收
 

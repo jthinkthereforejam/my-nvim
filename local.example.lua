@@ -22,6 +22,11 @@ return {
   --   state_dir = 'D:/local-state/my-nvim', -- optional; default stdpath('state')/my-nvim
   --   launcher = { 'wezterm', 'start', '--cwd', '{cwd}', '--', '{nvim}' },
   -- },
+  -- Save named writable text files after returning to normal mode and pausing.
+  -- autosave = {
+  --   enabled = true,
+  --   delay_ms = 1000,
+  -- },
   -- Optional DeepSeek inline completion. A nonempty DEEPSEEK_API_KEY takes priority.
   -- Keep the real key in local.lua or your local environment, never in Git/chat.
   -- deepseek = {

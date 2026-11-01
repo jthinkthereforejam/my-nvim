@@ -2,6 +2,8 @@
 -- Real noninteractive PTY jobs; Windows output capture needs a parent console.
 -- Default PowerShell interaction is checked separately in a real terminal window.
 assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local api,fn,uv=vim.api,vim.fn,vim.uv
 local terminal=require('config.terminal')
 local base=vim.fs.joinpath(fn.stdpath('cache'),'my-nvim-terminal-tests',tostring(uv.os_getpid()))

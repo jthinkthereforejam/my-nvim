@@ -2,6 +2,8 @@
 -- nvim --headless -c "lua dofile(vim.fn.stdpath('config') .. '/tests/languages.lua')"
 -- Optional: NVIM_TEST_LANGUAGES=cpp,rust,cs,jai selects a subset.
 -- Fixtures and build metadata live under stdpath('cache')/my-nvim-tests only.
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local api = vim.api
 local base = vim.fs.joinpath(vim.fn.stdpath('cache'), 'my-nvim-tests', tostring(vim.uv.os_getpid()))
 local selected = {}

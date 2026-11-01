@@ -1,6 +1,8 @@
 -- nvim --headless -u ./init.lua -c "lua dofile('tests/terminal_keys.lua')"
 -- Real embedded UI and keyboard dispatch, with a real non-stdin-dependent PTY.
 assert(vim.g.my_nvim_ready,'Load the my-nvim configuration before this test')
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local api,fn,uv=vim.api,vim.fn,vim.uv
 local config_root=assert(vim.g.my_nvim_root)
 local base=vim.fs.joinpath(fn.stdpath('cache'),'my-nvim-terminal-key-tests',tostring(uv.os_getpid()))
@@ -11,7 +13,7 @@ local function wait_for(predicate,message,timeout) assert(vim.wait(timeout or 10
 local function env_list(env) local result={}; for k,v in pairs(env) do result[#result+1]=k..'='..v end; return result end
 local function spawn()
   local command=fn.has('win32')==1 and {'powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command','[Threading.Thread]::Sleep(120000)'} or {'/bin/sleep','120'}
-  local early=('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q}); m.deepseek={enabled=false}; m.terminal={shell=vim.json.decode(%q)}')
+  local early=('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.autosave={enabled=false}; m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q}); m.deepseek={enabled=false}; m.terminal={shell=vim.json.decode(%q)}')
     :format(config_root,config_root,vim.fs.joinpath(base,'state'),vim.json.encode(command))
   local environment=require('config.project_native').child_env()
   for key in pairs(environment) do if key:upper()=='DEEPSEEK_API_KEY' then environment[key]=nil end end

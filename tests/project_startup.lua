@@ -1,6 +1,8 @@
 -- nvim --headless -c "lua dofile(vim.fn.stdpath('config') .. '/tests/project_startup.lua')"
 -- Uses Neovim's MessagePack codec and real embedded UI attachment. No GUI window.
 assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local api, fn, uv = vim.api, vim.fn, vim.uv
 local config_root = assert(vim.g.my_nvim_root)
 local base = vim.fs.joinpath(fn.stdpath('cache'), 'my-nvim-project-startup-tests', tostring(uv.os_getpid()))
@@ -16,7 +18,7 @@ local function normalize(path)
   return fn.has('win32') == 1 and path:lower() or path
 end
 local function spawn(arguments, cwd, headless)
-  local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')
+  local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.autosave={enabled=false}; m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')
     :format(config_root, config_root, state_dir)
   local argv = { '--embed', '-i', 'NONE', '--cmd', early, '-u', vim.fs.joinpath(config_root, 'init.lua') }
   if headless then table.insert(argv, 1, '--headless') end

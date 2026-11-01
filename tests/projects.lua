@@ -2,6 +2,8 @@
 -- Real independent Neovim processes, per-project MRU files and persistence sessions.
 -- All source files, history and sessions created here stay below stdpath('cache').
 assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local api, fn = vim.api, vim.fn
 local stage = vim.env.MY_NVIM_PROJECT_TEST_STAGE
 local base = vim.env.MY_NVIM_PROJECT_TEST_BASE
@@ -281,7 +283,7 @@ local function session_restore(paths)
   print('PASS project session restored across processes after direct :qa with live terminals: two code files, exact cursors/toplines/splits, no terminal/quickfix/float')
 end
 local function child_arguments()
-  local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')
+  local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.autosave={enabled=false}; m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')
     :format(config_root, config_root, state_dir)
   return { vim.v.progpath, '--headless', '-i', 'NONE', '--cmd', early, '-u', vim.fs.joinpath(config_root, 'init.lua'),
     '-c', ('lua dofile(%q)'):format(script) }

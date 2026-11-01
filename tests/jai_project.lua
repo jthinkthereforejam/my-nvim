@@ -1,6 +1,8 @@
 -- Set NVIM_TEST_JAI_PROJECT to an existing latticeon checkout, then run:
 -- nvim --headless -u /path/to/my-nvim/init.lua "+lua dofile('/path/to/my-nvim/tests/jai_project.lua')"
 -- This test reads the project; it never writes source files or applies edits.
+-- This suite exercises explicit saves and preservation of unsaved buffers.
+require('config.autosave').setup({ autosave = { enabled = false } })
 local root = assert(vim.env.NVIM_TEST_JAI_PROJECT, 'Set NVIM_TEST_JAI_PROJECT to the latticeon checkout')
 local paths = {
   main = vim.fs.joinpath(root, 'src/main.jai'), game = vim.fs.joinpath(root, 'src/game.jai'),
