@@ -160,8 +160,8 @@ function M.setup(_machine)
   local snacks = require('snacks')
   snacks.setup({
     dashboard = { enabled = home_context(), width = 82, sections = sections, preset = { keys = {}, header = '' } },
-    picker = { enabled = false, ui_select = false }, terminal = { enabled = false },
-    bigfile = { enabled = false }, quickfile = { enabled = false }, explorer = { enabled = false },
+    picker = { enabled = false, ui_select = false, sources = { explorer = require('config.explorer').options() } }, terminal = { enabled = false },
+    bigfile = { enabled = false }, quickfile = { enabled = false }, explorer = { enabled = true, replace_netrw = false },
     image = { enabled = false }, indent = { enabled = false }, input = { enabled = false },
     notifier = { enabled = false }, scope = { enabled = false }, scroll = { enabled = false },
     statuscolumn = { enabled = false }, words = { enabled = false },

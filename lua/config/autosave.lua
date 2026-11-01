@@ -4,6 +4,7 @@
 local M = {}
 local api, uv = vim.api, vim.uv
 local records = {}
+local rename_tokens = {}
 local config = { enabled = true, delay_ms = 1000 }
 local write_depth = 0
 local arm, changed
@@ -80,6 +81,7 @@ local function observe(buf, reset)
   local name = filename(buf)
   if not name then return nil end
   local record = records[buf]
+  if record and record.rename_token then return record end
   if not record then
     record = { buf = buf, generation = 0 }
     records[buf] = record
@@ -106,7 +108,11 @@ local function observe(buf, reset)
         end)
       end,
       on_detach = function()
-        if records[buf] == record then cancel(record); records[buf] = nil end
+        if records[buf] == record then
+          cancel(record)
+          record.attached = false
+          if not record.rename_token then records[buf] = nil end
+        end
       end,
     })
   end
@@ -114,7 +120,7 @@ local function observe(buf, reset)
 end
 local function save(record)
   local buf = record.buf
-  if not config.enabled or exiting() or records[buf] ~= record or record.paused or not eligible(buf) then return end
+  if not config.enabled or exiting() or records[buf] ~= record or record.rename_token or record.paused or not eligible(buf) then return end
   if editing(buf) or blocked(buf) then record.waiting = true; return end
   if filename(buf) ~= record.name then changed(buf); return end
   local disk, stat_error = fingerprint(record.name)
@@ -148,7 +154,7 @@ arm = function(buf, leaving)
   if not record then return end
   cancel(record)
   record.waiting = false
-  if not config.enabled or exiting() or write_depth > 0 or record.paused or not eligible(buf) then return end
+  if not config.enabled or exiting() or write_depth > 0 or record.rename_token or record.paused or not eligible(buf) then return end
   if not leaving and editing(buf) then record.waiting = true; return end
   local generation, tick = record.generation, api.nvim_buf_get_changedtick(buf)
   record.timer = vim.defer_fn(function()
@@ -163,6 +169,90 @@ arm = function(buf, leaving)
 end
 changed = function(buf)
   if write_depth == 0 then arm(buf) end
+end
+-- Explorer operations use a two-phase handoff. A filename change is trusted
+-- only after the old on-disk baseline was verified; ordinary :file stays guarded.
+local function path_key(path)
+  local normalized = vim.fs.normalize(path)
+  return vim.fn.has('win32') == 1 and normalized:lower() or normalized
+end
+local function same_identity(before, after)
+  if not before or not after then return false end
+  for _, field in ipairs({ 'exists', 'type', 'dev', 'ino', 'size', 'mtime' }) do
+    if not vim.deep_equal(before[field], after[field]) then return false end
+  end
+  return true
+end
+function M.begin_rename(changes)
+  local token = { entries = {} }
+  for _, change in ipairs(changes) do
+    local buf = change.buf
+    if api.nvim_buf_is_valid(buf) and api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' then
+      local record = records[buf]
+      if not record or path_key(record.name) ~= path_key(change.from) then
+        return nil, 'No recorded disk baseline; reload the source before renaming.'
+      end
+      if record.rename_token then return nil, 'A rename is already in progress.' end
+      if record.paused then return nil, 'AutoSave is paused; resolve the source conflict before renaming.' end
+      local disk = fingerprint(change.from)
+      if not disk or not record.baseline or not vim.deep_equal(disk, record.baseline) then
+        pause(record, 'The source changed externally. Save or reload it manually before renaming.')
+        return nil, 'The source changed externally; rename was cancelled.'
+      end
+      token.entries[#token.entries + 1] = { record = record, change = vim.deepcopy(change), baseline = vim.deepcopy(disk) }
+    end
+  end
+  rename_tokens[token] = true
+  for _, entry in ipairs(token.entries) do
+    cancel(entry.record)
+    entry.record.rename_token = token
+  end
+  return token
+end
+function M.check_rename(token)
+  if not rename_tokens[token] then return false, 'Invalid rename transaction.' end
+  for _, entry in ipairs(token.entries) do
+    if entry.record.paused or not vim.deep_equal(fingerprint(entry.change.from), entry.baseline) then
+      return false, 'The source changed while preparing the rename.'
+    end
+  end
+  return true
+end
+function M.end_rename(token, success)
+  if not rename_tokens[token] then return false, 'Invalid rename transaction.' end
+  rename_tokens[token] = nil
+  local failure
+  for _, entry in ipairs(token.entries) do
+    local record, change = entry.record, entry.change
+    record.rename_token = nil
+    local name = filename(change.buf)
+    local expected = success and change.to or change.from
+    local disk = name and fingerprint(name)
+    if not success and name then
+      records[change.buf] = record
+      record.name = name
+      pause(record, 'The rename was cancelled. Save or reload manually before AutoSave resumes.')
+    elseif name and path_key(name) == path_key(expected) and same_identity(entry.baseline, disk) then
+      records[change.buf] = record
+      record.name, record.baseline, record.baseline_error = name, disk, nil
+      record.paused, record.waiting = nil, false
+      observe(change.buf)
+      if eligible(change.buf) then arm(change.buf) end
+    elseif name then
+      records[change.buf] = record
+      record.name = name
+      pause(record, 'The rename did not preserve the verified file identity. Save or reload manually to resume.')
+      failure = failure or 'The renamed file needs manual review; AutoSave remains paused.'
+    else
+      cancel(record)
+      records[change.buf] = nil
+    end
+  end
+  return failure == nil, failure
+end
+function M.forget(buf)
+  local record = records[buf]
+  if record then cancel(record); records[buf] = nil end
 end
 function M.status(buf)
   buf = (buf == nil or buf == 0) and api.nvim_get_current_buf() or buf

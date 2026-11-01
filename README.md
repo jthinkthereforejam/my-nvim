@@ -11,6 +11,7 @@
 - blink.cmp：LSP、路径、原生 snippets、buffer 补全；使用 Lua 匹配器，命令行交给 Neovim 原生补全。
 - 可选 DeepSeek FIM 灰字补全；与普通补全菜单分开显示，配置本机 Key 后启用。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
+- Snacks Explorer 左侧目录树，默认关闭；普通字符显示 Git / 诊断，支持文件操作及代码窗口焦点切换。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
 - 原生集成终端：在当前窗口切换代码与终端 buffer，不改变现有分屏布局；按项目保留多个 Shell 会话，切回代码时保留任务与输出。
 - 默认自动保存：退出插入 / 替换模式后停顿 1 秒写入普通代码文件，可按实例关闭。
@@ -20,9 +21,9 @@
 
 先安装精确版本 [Neovim 0.12.6](https://github.com/neovim/neovim/releases/tag/v0.12.6)。macOS 选择对应 arm64 / x86_64 官方包，解压后把 `bin` 放进 PATH；不要依赖包管理器的“最新版”恰好等于该版本。
 
-其余依赖：Git、ripgrep (`rg`)、curl、tar、C 编译器、Tree-sitter CLI >= **0.26.1**、**.NET 10 SDK**、clangd，以及通过 [rustup](https://rustup.rs/) 安装的 Rust。Tree-sitter CLI 从官方包或 Cargo 安装，勿用 npm 同名包。Windows 可使用 LLVM 或 Visual Studio Developer PowerShell；macOS 可用 Xcode Command Line Tools 和 LLVM。
+其余依赖：Git、ripgrep (`rg`)、[fd](https://github.com/sharkdp/fd#installation) >= **8.4**、curl、tar、C 编译器、Tree-sitter CLI >= **0.26.1**、**.NET 10 SDK**、clangd，以及通过 [rustup](https://rustup.rs/) 安装的 Rust。Tree-sitter CLI 从官方包或 Cargo 安装，勿用 npm 同名包。Windows 可使用 LLVM 或 Visual Studio Developer PowerShell；macOS 可用 Xcode Command Line Tools 和 LLVM。
 
-安装脚本会检查上述依赖，缺少时给出指引；仅自动补装 rustup 的 `rust-analyzer` / `rust-src` 与 Tree-sitter CLI 0.26.1。随后同步插件锁，安装专用 Roslyn、缺失的 Jacket 工具链、语法解析器和 FFF 原生库。重新运行安装脚本是幂等的。
+安装脚本会检查上述依赖，缺少时给出指引；自动补装 rustup 的 `rust-analyzer` / `rust-src` 与 Tree-sitter CLI 0.26.1。Windows 缺少 fd 或版本过旧时，通过 WinGet 的 `sharkdp.fd` 包在当前用户范围安装；macOS 请先运行 `brew install fd`，已有旧版时用 `brew upgrade fd`。随后同步插件锁，安装专用 Roslyn、缺失的 Jacket 工具链、语法解析器和 FFF 原生库。重新运行安装脚本是幂等的。
 
 ### Windows
 
@@ -34,9 +35,11 @@ Copy-Item local.example.lua local.lua
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
+Windows 的 fd 也可单独安装：`winget install --id sharkdp.fd --exact --source winget --scope user`。安装后新开终端，运行 `fd --version` 检查。
+
 本机已完成安装时，直接在新终端运行 `nvim`。安装脚本将配置仓库联接到 `%LOCALAPPDATA%\nvim`，并把 Neovim 的 `bin` 加入用户 PATH。它拒绝替换已有普通配置目录或指向其他仓库的链接。
 
-可用 `-Nvim <绝对路径>` 指定 Neovim；`-SkipBootstrap` 只检查环境并接入目录；`-SkipDependencyInstall` 只检查、不自动补装 Rust 组件及 CLI。`ExecutionPolicy Bypass` 仅作用于这次脚本进程。
+可用 `-Nvim <绝对路径>` 指定 Neovim；`-SkipBootstrap` 跳过插件与语言工具的 bootstrap，仍检查依赖并接入目录；`-SkipDependencyInstall` 只检查、不自动补装 fd、Rust 组件或 CLI。`ExecutionPolicy Bypass` 仅作用于这次脚本进程。
 
 ### macOS
 
@@ -104,7 +107,7 @@ Roslyn 固定 **5.12.0-1.26453.19**，通过微软 Azure feed 安装到 `stdpath
 
 `nvim 项目目录` 同样将目录作为明确项目根，并恢复该文件夹上次保存的代码文件与窗口布局；会话按文件夹保存，不按 Git 分支拆分。没有会话时启动 FFF 文件搜索；空目录显示项目提示页，可用 `:edit 文件名` 创建文件，或按 `Ctrl-j` 打开终端。
 
-有代码文件时，退出自动保存会话；空项目不写入空会话。会话不保存未写入磁盘的文本，也不恢复终端进程、quickfix 或弹出窗口。首页只使用 Snacks dashboard，保留原有 FFF、Telescope 搜索和集成终端。
+有代码文件时，退出自动保存会话；空项目不写入空会话。会话不保存未写入磁盘的文本，也不恢复终端进程、目录树、quickfix 或弹出窗口。首页由 Snacks dashboard 提供，目录树使用同一锁定版本的 Snacks Explorer；保留原有 FFF、Telescope 搜索和集成终端。
 
 本机状态默认位于 `stdpath('state')/my-nvim`，其中 `projects/` 保存项目历史，`sessions/` 保存会话，可用 `project.state_dir` 覆盖。不同项目的历史分别原子写入，并发打开时不会互相覆盖。失效路径保留并标记为不可用；在“全部项目”列表按 `Ctrl-d` 仅移除所选历史记录，不删除项目文件。
 
@@ -154,6 +157,7 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `<leader>tn` / `<leader>ts` | 新建终端 / 选择当前项目的终端 |
 | `<leader>tx` | 明确关闭当前终端并结束对应 Shell |
 | `Ctrl-w j` | 普通模式中移到下方窗口，保留原有窗口导航 |
+| `<leader>e` / `<leader>o` | 显隐目录树 / 在树与最近代码窗口之间切换焦点 |
 | `<leader>sf` / `<leader>sF` | FFF 项目文件 / Telescope 文件回退 |
 | `<leader>sg` / `<leader>sw` | 项目内容 / 当前词搜索 |
 | `<leader>sh` / `<leader>sr` | 帮助 / 恢复 Telescope |
@@ -236,6 +240,31 @@ Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 S
 
 也可直接执行 `:TerminalToggle`、`:TerminalNew`、`:TerminalSelect`、`:TerminalClose`，分别对应切换、新建、选择和关闭。Shell 退出后保留输出并标记为 `Ended`，不会自动重启；用新建命令再次启动 Shell。会话仅在本次 Neovim 进程内保留，退出 Neovim 后不恢复。
 
+## 左侧目录树
+
+目录树默认关闭，不占用首页或新项目窗口。按 `<leader>e` 打开并聚焦左侧 **40 列**的 Snacks Explorer，再按一次关闭；`<leader>o` 在树与最近代码窗口之间切换焦点。也可执行 `:ExplorerToggle` / `:ExplorerFocus`。树中的 Enter / `l` 优先将文件打开到最近代码窗口；若该窗口正在显示终端，先隐藏终端，Shell 与任务继续运行。树跟踪当前代码文件，但不会因此扩大根目录、修改项目根或改变 cwd。
+
+树根优先使用明确打开的项目目录；普通文件启动使用当前文件所属 Git 根，无 Git 时使用 cwd。默认显示被 Git 忽略的文件和点文件，始终排除 `.git`；`I` / `H` 只切换当前树的显示。树与 FFF 各自维护显示和索引：FFF 的过滤、冷启动扫描和会话内复用规则不变，也不向项目写入 `.ignore` 白名单。目录树使用普通字符，例如 Git 的 `M` / `A` / `!`、诊断的 `E` / `W`，不需要 Nerd Font。
+
+| 树内按键 | 功能 |
+| --- | --- |
+| `j` / `k`、上下方向键 | 向下 / 向上移动 |
+| `l` / Enter | 展开目录或在代码窗口打开文件 |
+| `h` | 收起当前目录或回到父目录 |
+| `/` | 输入树内过滤条件 |
+| `I` / `H` | 切换被忽略文件 / 点文件的显示 |
+| `a` | 新建文件或目录；目录名以 `/` 结尾 |
+| `r` / `d` | 重命名 / 删除所选文件 |
+| `c` / `m` | 复制 / 移动文件 |
+| `y` / `p` | 复制所选路径 / 将这些文件粘贴到当前目录 |
+| `u` / `Z` | 刷新目录树 / 收起全部目录 |
+| `q`（普通模式） / Esc | 关闭整棵树；Esc 在过滤输入模式中也生效，输入模式的 `q` 仍可输入文件名 |
+| `?` | 查看树内帮助 |
+
+重命名和移动会保留已打开代码 buffer 的编号、修改、撤销记录，并通知支持文件重命名的 LSP。目标已存在时拒绝覆盖；包含未保存修改的文件不允许直接删除。若自动保存已因外部文件变化暂停，树内操作不会清除冲突状态，先检查并处理磁盘与 buffer 的差异。
+
+目录树不保存进项目代码会话，也不持久保存展开状态；重新启动 Neovim 后仍保持关闭，代码会话继续恢复原来的文件与布局。树内文件操作不会切换项目或启动新的 Neovim 进程；打开另一个项目仍使用首页或 `:ProjectOpen`。树中 `Ctrl-j` 使用原有集成终端，任务不会因树的显隐而结束。
+
 ## FFF 生命周期与回退
 
 通过首页打开的目录作为明确项目根；普通文件启动取当前文件向上找到的 Git 根，无 Git 时使用当前工作目录。FFF 第一次文件搜索创建索引，同会话重复打开复用索引；切换项目根时切换索引，新 Neovim 进程重新扫描文件。搜索频次/查询历史可持久保存。
@@ -276,6 +305,23 @@ nvim --clean --headless -l tests/cmdline_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
+
+Explorer 回归测试在仓库根目录运行，要求 `fd --version` 为 **8.4 或更新版本**。脚本使用 cache 下的临时项目与独立嵌入式 UI，无需 Python 或外部 API，并自行清理测试进程。Windows 请在正常 PowerShell 终端中运行，不重定向宿主标准流：
+
+```powershell
+fd --version
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/explorer.lua')"
+```
+
+macOS 安装依赖并运行同套测试，尚未实机验证：
+
+```bash
+brew install fd
+fd --version
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/explorer.lua')"
+```
+
+手动检查时，在项目代码窗口按 `<leader>e` 打开树，确认左侧 40 列、被忽略文件 / 点文件可见且 `.git` 不可见；用 `<leader>o` 往返代码窗口，再检查过滤、刷新和关闭。文件操作应在临时项目中验收：复制 / 移动 / 重命名、拒绝覆盖目标与删除未保存文件；保存会话并重新启动后，确认代码布局恢复且树保持关闭。
 
 自动保存回归测试使用 cache 下的临时文件、独立嵌入式 UI 和真实磁盘读写，不需要 Python、真实 AI Key 或外部 API；脚本自行退出并清理测试资源。Windows PowerShell（仓库根目录）：
 
@@ -332,6 +378,14 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 手动验收时，先打开两个代码分屏并记录布局；在其中一个窗口切换终端、切换目录并运行持续任务，再按 `Ctrl-j` 检查原 buffer、光标、滚动位置、显示选项与编辑模式恢复，其他窗口布局不变。再次切换后检查任务和目录保留；新建第二个终端并从列表切回，确认返回目标仍是最初的代码。再检查两个窗口显示同一会话时分别返回、不同项目的会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-01 文件树验收
+
+Windows 的完整 `tests/explorer.lua` 已通过，退出码 0，无 SKIP：覆盖树内导航 / 过滤 / 文件操作、真实 FFF 过滤隔离、受管理与手动创建的终端、脏 buffer 与目录重命名、真实 clangd 新路径请求和保存通知、跨进程会话恢复。连续 12 轮打开即关闭、fd 过滤扫描中关闭，以及只剩目录树时关闭，未出现旧异步错误或残留进程。
+
+另在两个新开的独立 Windows Terminal 窗口中，通过 Neovim RPC 读取真实外部 TUI 状态与渲染列表文本，确认：首页首屏保持、目录树默认关闭；左侧宽 40 列，被忽略文件 / 点文件可见而 `.git` 不可见，列表使用普通字符；`<leader>e` / `<leader>o` 与树中 `Ctrl-j` 生效。默认 PowerShell 的任务在隐藏期间完成，原 Shell / job 保持运行；树显示时保存代码会话不关闭树，新进程恢复双文件代码布局且目录树保持关闭。测试进程与 PowerShell 已清理，未操作原用户实例；这些检查不包含终端字体像素的肉眼验收。
+
+已有自动保存完整套件、`projects.lua`、`project_startup.lua`、`terminal_keys.lua` 和基础 smoke 11 项均通过。Windows PowerShell 5.1 安装脚本检查与 Bash 语法检查通过；本机通过 WinGet 安装并验证 fd **10.5.0**，公共依赖要求仍为 **fd >=8.4**。Snacks 沿用原锁定提交，没有升级插件或改动 FFF 索引规则。macOS 提供上面的同套测试命令，尚未实机验证。
 
 ### 2026-11-01 自动保存验收
 

@@ -36,6 +36,13 @@ function Require-App([string]$Name, [string]$Hint) {
     return $found
 }
 
+function Test-FdVersion([string]$Executable) {
+    if (-not $Executable) { return $false }
+    $fdVersion = (& $Executable --version | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $fdVersion -notmatch '^fd\s+(\d+\.\d+(?:\.\d+)?)') { return $false }
+    return [version]$Matches[1] -ge [version]'8.4'
+}
+
 if (-not $Nvim) { $Nvim = Find-App 'nvim' }
 if (-not $Nvim) {
     $candidate = Join-Path $env:ProgramFiles 'Neovim\bin\nvim.exe'
@@ -71,6 +78,24 @@ foreach ($entry in $machineEnvironment.environment.PSObject.Properties) {
 
 $null = Require-App 'git' 'Install Git for Windows.'
 $null = Require-App 'rg' 'Install ripgrep and add its directory to PATH.'
+$fd = Find-App 'fd'
+if (-not (Test-FdVersion $fd)) {
+    $fdHint = 'fd >=8.4 is required by Explorer. Run: winget install --id sharkdp.fd --exact --source winget --scope user'
+    if ($SkipDependencyInstall) { throw $fdHint }
+    $winget = Require-App 'winget' $fdHint
+    & $winget install --id sharkdp.fd --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+    if ($LASTEXITCODE -ne 0) { throw "Cannot install fd through WinGet. $fdHint" }
+    # Preserve local.lua PATH precedence while importing new user-level command aliases.
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    foreach ($entry in @($userPath -split ';' | Where-Object { $_ })) {
+        $directory = [Environment]::ExpandEnvironmentVariables($entry.Trim())
+        if (-not (@($env:PATH -split ';') | Where-Object { $_.TrimEnd('\') -ieq $directory.TrimEnd('\') })) {
+            $env:PATH = $env:PATH.TrimEnd(';') + ';' + $directory
+        }
+    }
+    $fd = Find-App 'fd'
+    if (-not (Test-FdVersion $fd)) { throw "fd is installed but PATH still selects a missing or old executable. $fdHint" }
+}
 $null = Require-App 'curl' 'Windows 10/11 includes curl.exe.'
 $null = Require-App 'tar' 'Windows 10/11 includes tar.exe.'
 $dotnet = Require-App $machineEnvironment.tools.dotnet 'Install the .NET 10 SDK or set dotnet in local.lua.'

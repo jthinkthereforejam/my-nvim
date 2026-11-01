@@ -39,6 +39,9 @@ trap - EXIT HUP INT TERM
 
 require_app git 'Install Git (or the Xcode Command Line Tools).'
 require_app rg 'Install ripgrep, for example with brew install ripgrep.'
+require_app fd 'Explorer requires fd >=8.4. Run: brew install fd'
+fd_version=$(fd --version | awk '{print $2}')
+awk -v v="$fd_version" 'BEGIN { n=split(v,a,"."); exit !(n>=2 && (a[1]>8 || (a[1]==8 && a[2]>=4))) }' || fail 'Explorer requires fd >=8.4. Run: brew upgrade fd'
 require_app curl 'curl is included with macOS.'
 require_app tar 'tar is included with macOS.'
 require_app "$MY_NVIM_DOTNET" 'Install the .NET 10 SDK or set dotnet in local.lua.'
