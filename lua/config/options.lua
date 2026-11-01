@@ -22,9 +22,11 @@ function M.setup()
   vim.opt.inccommand = 'split'
   vim.opt.confirm = true
   vim.opt.winborder = 'rounded'
+  -- Insert spaces; one indentation/Tab/Backspace step is four columns.
   vim.opt.expandtab = true
   vim.opt.shiftwidth = 4
   vim.opt.tabstop = 4
+  vim.opt.softtabstop = 4
   vim.opt.completeopt = { 'menu', 'menuone', 'noselect' }
   vim.schedule(function() vim.opt.clipboard = 'unnamedplus' end)
   vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>', { desc = 'Clear search highlight', silent = true })

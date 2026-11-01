@@ -5,6 +5,7 @@
 ## 已配置
 
 - Everforest 深色、medium 背景；绝对/相对行号、当前行高亮、固定诊断栏。
+- 默认使用空格缩进，缩进与 Tab 宽度均为 4；项目的 EditorConfig 或文件 modeline 可显式覆盖。
 - `vim.pack` 管理插件；版本及实际提交记在 `nvim-pack-lock.json`，普通启动不更新插件。
 - Snacks 首页显示最近项目，系统对话框打开文件夹/文件；每个项目使用独立 Neovim 窗口，persistence 恢复代码布局。
 - blink.cmp：LSP、路径、原生 snippets、buffer 补全；使用 Lua 匹配器，命令行交给 Neovim 原生补全。
