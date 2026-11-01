@@ -17,6 +17,12 @@ return {
   --   height = 0.33, -- fraction of the editor height
   --   toggle_key = '<C-j>', -- shared by normal, insert, and terminal modes
   -- },
+  -- Project windows: reuse your named Windows Terminal profile by default.
+  -- project = {
+  --   terminal_profile = 'Neovim',
+  --   state_dir = 'D:/local-state/my-nvim', -- optional; default stdpath('state')/my-nvim
+  --   launcher = { 'wezterm', 'start', '--cwd', '{cwd}', '--', '{nvim}' },
+  -- },
   -- Optional proxy used by this Neovim process when downloading dependencies:
   -- proxy = 'http://127.0.0.1:7890',
 }

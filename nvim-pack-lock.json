@@ -30,6 +30,11 @@
       "src": "https://github.com/nvim-treesitter/nvim-treesitter",
       "version": "'a2f694478be07f89c2d03cc17858a8745a400c4b'"
     },
+    "persistence.nvim": {
+      "rev": "b20b2a7887bd39c1a356980b45e03250f3dce49c",
+      "src": "https://github.com/folke/persistence.nvim",
+      "version": "'b20b2a7887bd39c1a356980b45e03250f3dce49c'"
+    },
     "plenary.nvim": {
       "rev": "74b06c6c75e4eeb3108ec01852001636d85a932b",
       "src": "https://github.com/nvim-lua/plenary.nvim",
@@ -39,6 +44,11 @@
       "rev": "059c5791a19a00049736d02ad2855a346433cf54",
       "src": "https://github.com/seblyng/roslyn.nvim",
       "version": "'059c5791a19a00049736d02ad2855a346433cf54'"
+    },
+    "snacks.nvim": {
+      "rev": "882c996cf28183f4d63640de0b4c02ec886d01f2",
+      "src": "https://github.com/folke/snacks.nvim",
+      "version": "'882c996cf28183f4d63640de0b4c02ec886d01f2'"
     },
     "telescope.nvim": {
       "rev": "40aedd8a68c78a656a10a8d62d80c54af59420fb",

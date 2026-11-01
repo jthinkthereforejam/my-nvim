@@ -5,7 +5,8 @@
 ## 已配置
 
 - Everforest 深色、medium 背景；绝对/相对行号、当前行高亮、固定诊断栏。
-- `vim.pack` 管理 10 个插件；版本及实际提交记在 `nvim-pack-lock.json`，普通启动不更新插件。
+- `vim.pack` 管理插件；版本及实际提交记在 `nvim-pack-lock.json`，普通启动不更新插件。
+- Snacks 首页显示最近项目，系统对话框打开文件夹/文件；每个项目使用独立 Neovim 窗口，persistence 恢复代码布局。
 - blink.cmp：LSP、路径、原生 snippets、buffer 补全；使用 Lua 匹配器，命令行交给 Neovim 原生补全。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
@@ -61,6 +62,9 @@ bash scripts/install.sh
 | `terminal.shell` | 可选 Shell argv 数组；Windows 默认 `{ 'powershell.exe', '-NoLogo' }`，macOS 默认用户登录 Shell |
 | `terminal.height` | 终端面板高度占比，默认 `0.33` |
 | `terminal.toggle_key` | 显示/隐藏快捷键，默认 `'<C-j>'` |
+| `project.terminal_profile` | Windows Terminal 配置项名称，默认 `'Neovim'` |
+| `project.launcher` | 可选的新窗口启动器 argv 模板，覆盖平台默认启动器，见下文 |
+| `project.state_dir` | 本机项目历史与会话的存储根目录，默认 `stdpath('state')/my-nvim` |
 
 使用 `/` 或 Lua `[[...]]` 书写 Windows 路径，避免反斜杠转义。临时代理或机器目录不应写进公共模块。
 
@@ -78,12 +82,43 @@ terminal = {
 
 Roslyn 固定 **5.12.0-1.26453.19**，通过微软 Azure feed 安装到 `stdpath('data')/tools/roslyn/<版本>`。Jacket 固定 **0.30.4**，默认安装到 `stdpath('data')/tools/jacket/0.30.4`，下载时验证仓库中固定的官方 SHA-256。设置 `jacket` 可复用已有完整工具链；服务器与 stdlib 应来自同一版本。
 
+## 首页与项目
+
+直接运行 `nvim`，在空启动窗口中显示首页：最近 8 个项目列出名称与路径，可用数字、上下方向键 / `j`、`k` 加 Enter，或鼠标单击打开。`o` 打开文件夹，`f` 打开文件，`p` 查看全部项目，`r` 选择最近文件，`q` 退出当前实例。最近项目按打开时间保存，重新聚焦首页时更新；非 Git 文件夹也可作为项目。
+
+打开文件夹/文件使用系统原生对话框，取消后保持原样。确认后启动**新的终端窗口和独立 Neovim 进程**，原首页或编辑窗口的文件、未保存修改、cwd 和终端任务均保留。最近文件的选择同样在新窗口打开。`nvim file.cs` 等显式文件参数直接编辑，不显示首页；项目子进程和 headless 任务也不显示首页。
+
+| 按键 | 命令 | 功能 |
+| --- | --- | --- |
+| `<leader>po` | `:ProjectOpen` | 打开系统文件夹对话框，在新窗口打开项目 |
+| `<leader>pp` | `:ProjectRecent` | 用 Telescope 选择全部最近项目 |
+| `<leader>ph` | `:ProjectHome` | 新开一个首页窗口 |
+| `<leader>ps` | `:ProjectSaveSession` | 保存当前项目的代码会话 |
+
+`nvim 项目目录` 同样将目录作为明确项目根，并恢复该文件夹上次保存的代码文件与窗口布局；会话按文件夹保存，不按 Git 分支拆分。没有会话时启动 FFF 文件搜索；空目录显示项目提示页，可用 `:edit 文件名` 创建文件，或按 `Ctrl-j` 打开终端。
+
+有代码文件时，退出自动保存会话；空项目不写入空会话。会话不保存未写入磁盘的文本，也不恢复终端进程、quickfix 或弹出窗口。首页只使用 Snacks dashboard，保留原有 FFF、Telescope 搜索和集成终端。
+
+本机状态默认位于 `stdpath('state')/my-nvim`，其中 `projects/` 保存项目历史，`sessions/` 保存会话，可用 `project.state_dir` 覆盖。不同项目的历史分别原子写入，并发打开时不会互相覆盖。失效路径保留并标记为不可用；在“全部项目”列表按 `Ctrl-d` 仅移除所选历史记录，不删除项目文件。
+
+Windows 默认通过 Windows Terminal 的 `Neovim` 配置项新开窗口。请在 Windows Terminal 设置中创建同名配置项，或将 `project.terminal_profile` 改为已有配置项名称。字体由该终端配置项决定，例如 Monaco；首页不需要 Nerd Font。macOS 默认在 Terminal.app 新开窗口，沿用 Terminal 的字体设置。
+
+使用其他终端时，可在 `local.lua` 返回的 table 中设置启动器，例如：
+
+```lua
+project = {
+  launcher = { 'wezterm', 'start', '--cwd', '{cwd}', '--', '{nvim}' },
+},
+```
+
+模板是 argv 数组，`{nvim}` 必须作为独立参数出现；支持独立参数 `{cwd}`、`{kind}`、`{file}`，不会替换嵌在字符串中的占位符。没有文件时移除 `{file}` 参数；未写 `{file}` 时自动追加文件路径，项目启动标记由配置自动补齐。机器路径和终端偏好只放在被忽略的 `local.lua` 中。
+
 ## Unity C#
 
 使用 [roslyn.nvim](https://github.com/seblyng/roslyn.nvim) 接入微软 Roslyn，`c_sharp` Tree-sitter 高亮叠加 LSP 语义高亮。.NET 10 用于运行语言服务器，项目继续沿用 Unity 生成的目标框架。
 
 1. 在 Unity 的 External Tools 中启用需要的 `.csproj` 生成选项，重新生成解决方案。
-2. 从 Unity 项目根目录运行 `nvim`，打开 `Assets` 下的 C# 文件，等待项目加载。
+2. 运行 `nvim Unity项目目录`，或从首页 / `:ProjectOpen` 选择 Unity 项目目录；在项目窗口打开 `Assets` 下的 C# 文件，等待项目加载。
 3. 用 `:checkhealth vim.lsp` 检查连接。存在多个解决方案时，用 `:Roslyn target` 切换。
 4. 新增程序集或更改 Unity 包后重新生成项目文件；需要时用 `:lsp restart` 重启客户端。
 
@@ -124,7 +159,7 @@ blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向�
 
 ## 集成终端
 
-在代码区按 `Ctrl-j`，底部打开约占窗口高度 1/3 的终端，上方代码保持可见。Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 Shell。新 Shell 的工作目录取当前文件所属 Git 根，没有 Git 时取 Neovim 当前工作目录。
+在代码区按 `Ctrl-j`，底部打开约占窗口高度 1/3 的终端，上方代码保持可见。Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 Shell。新 Shell 的工作目录优先使用首页打开的项目目录；普通文件启动取当前文件所属 Git 根，没有 Git 时取 Neovim 当前工作目录。
 
 1. 在终端输入构建或运行命令。再次按 `Ctrl-j` 隐藏面板并返回代码；运行中的任务继续执行，Shell 当前目录、历史和输出保持不变。
 2. 再按 `Ctrl-j` 显示同一会话。面板可见时，即使焦点在代码区，这个按键也会将它隐藏。
@@ -135,7 +170,7 @@ blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向�
 
 ## FFF 生命周期与回退
 
-项目根取当前文件向上找到的 Git 根；无 Git 时使用当前工作目录。FFF 第一次文件搜索创建索引，同会话重复打开复用索引；切换项目根时切换索引，新 Neovim 进程重新扫描文件。搜索频次/查询历史可持久保存。
+通过首页打开的目录作为明确项目根；普通文件启动取当前文件向上找到的 Git 根，无 Git 时使用当前工作目录。FFF 第一次文件搜索创建索引，同会话重复打开复用索引；切换项目根时切换索引，新 Neovim 进程重新扫描文件。搜索频次/查询历史可持久保存。
 
 FFF 原生库从 **v0.11.0** 的对应平台发布资产下载，并通过原生 `health_check` 验证实际版本。本地标记记录路径、版本及文件状态；下载失败或加载失败时 `<leader>sf` 自动回退 Telescope。可用 `:FFFInstall` 重试。Windows 若提示 DLL 正在使用，退出全部相关 Neovim 进程后重新启动，再重试；不会在当前进程混用新旧 ABI。
 
@@ -174,6 +209,16 @@ nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
 
+首页、项目会话与原生启动器测试（在仓库根目录运行，Windows PowerShell / macOS Shell 通用）：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/projects.lua')"
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/project_startup.lua')"
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/project_native.lua')"
+```
+
+这三项测试会自行退出。它们使用 cache 内的临时项目、真实子进程和嵌入式 UI 检查；启动器测试替换桌面启动步骤，不打开系统终端窗口。
+
 终端面板测试使用完整配置，在仓库根目录运行。Windows PowerShell：
 
 ```powershell
@@ -191,6 +236,14 @@ nvim --headless -u ./init.lua -i NONE -l tests/terminal_keys.lua
 手动验收时，在一个终端切换目录并运行持续任务，隐藏后确认代码区可编辑，再显示确认任务和目录保留；新建第二个终端并从列表切回，切换项目检查会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-01 首页与项目验收
+
+自动测试覆盖首页渲染与更新、文件参数跳过首页、目录 / 原生启动标记、空项目提示；独立进程会话恢复、父实例状态保留、并发 MRU；Unicode / 特殊字符路径、启动参数、环境隔离与对话框取消。Windows Terminal 真实窗口已确认首页显示、新窗口打开中文 / 空格 / 特殊字符目录、A 的未保存文本和后台 PowerShell 保持原样、B 跨进程恢复双文件分屏与光标、关闭 A 后 B 独立可用。真实桌面终端回归测试通过。系统对话框已验证 COM 声明编译及选择 / 取消 / 错误回调；实际对话框交互尚需手动检查。macOS 仅完成脚本静态检查与启动参数测试，尚未实机验证。
+
+macOS 实机验收流程（仓库根目录）：先执行上面的三个 `project_*` / `projects.lua` 测试，再运行 `nvim` 检查首页。按 `o` 取消目录对话框，确认首页未变；再次选择含中文、空格或单引号的空目录，检查新 Terminal 窗口与空项目提示。首次启动可能需要允许 Terminal 自动化，由用户在系统提示中决定。
+
+在项目 A 中编辑文本但不保存，用 `Ctrl-j` 运行 `sleep 30; printf 'done\n'` 后隐藏；用 `:ProjectOpen /path/to/B` 打开另一个非 Git 文件夹，确认 A 的修改与任务仍在。B 打开两个文件并分屏，移动光标，执行 `:ProjectSaveSession`、`:qa`，再从首页打开 B，检查文件、光标与分屏恢复且没有终端；关闭 A 后继续编辑 B。最后分别运行 `nvim /path/to/file` 与 `nvim /path/to/B`，检查文件启动跳过首页，目录启动恢复项目。
 
 ### 2026-11-01 集成终端验收
 

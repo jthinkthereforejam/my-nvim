@@ -10,6 +10,8 @@ local function canonical(path)
 end
 
 function M.project_root()
+  local project = package.loaded['config.project']
+  if project and project.root() then return project.root() end
   local name = vim.api.nvim_buf_get_name(0)
   local start = vim.bo.buftype == '' and name ~= '' and vim.fs.dirname(name) or vim.fn.getcwd()
   return vim.fs.root(start, '.git') or vim.fn.getcwd()

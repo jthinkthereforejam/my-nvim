@@ -1,0 +1,156 @@
+-- nvim --headless -c "lua dofile(vim.fn.stdpath('config') .. '/tests/project_startup.lua')"
+-- Uses Neovim's MessagePack codec and real embedded UI attachment. No GUI window.
+assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
+local api, fn, uv = vim.api, vim.fn, vim.uv
+local config_root = assert(vim.g.my_nvim_root)
+local base = vim.fs.joinpath(fn.stdpath('cache'), 'my-nvim-project-startup-tests', tostring(uv.os_getpid()))
+local state_dir = vim.fs.joinpath(base, 'state')
+local children = {}
+fn.mkdir(base, 'p')
+local function close(handle) if handle and not handle:is_closing() then handle:close() end end
+local function environment_list(env)
+  local result = {}; for key, value in pairs(env) do result[#result + 1] = key .. '=' .. value end; return result
+end
+local function normalize(path)
+  path = vim.fs.normalize(uv.fs_realpath(path) or path):gsub('[/\\]+$', '')
+  return fn.has('win32') == 1 and path:lower() or path
+end
+local function spawn(arguments, cwd, headless)
+  local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')
+    :format(config_root, config_root, state_dir)
+  local argv = { '--embed', '-i', 'NONE', '--cmd', early, '-u', vim.fs.joinpath(config_root, 'init.lua') }
+  if headless then table.insert(argv, 1, '--headless') end
+  vim.list_extend(argv, arguments or {})
+  local client = { stdin = uv.new_pipe(false), stdout = uv.new_pipe(false), stderr = uv.new_pipe(false),
+    responses = {}, serial = 0, errors = {}, notifications = 0 }
+  children[#children + 1] = client
+  client.handle = assert(uv.spawn(vim.v.progpath, { args = argv, cwd = cwd or base,
+    env = environment_list(require('config.project_native').child_env()), hide = true,
+    stdio = { client.stdin, client.stdout, client.stderr } }, function(code, signal)
+    client.exited = { code = code, signal = signal }
+    close(client.handle)
+  end))
+  local unpack = vim.mpack.Unpacker()
+  client.stdout:read_start(function(err, chunk)
+    if err then client.protocol_error = tostring(err) end
+    if not chunk then return end
+    local position = 1
+    while position <= #chunk do
+      local ok, message, next_position = pcall(unpack, chunk, position)
+      if not ok then client.protocol_error = tostring(message); return end
+      position = next_position
+      if message then
+        if message[1] == 1 then client.responses[message[2]] = message
+        elseif message[1] == 2 then client.notifications = client.notifications + 1
+        elseif message[1] == 0 then
+          client.stdin:write(vim.mpack.encode({ 1, message[2], { 0, 'UI test does not implement client requests' }, vim.NIL }))
+        end
+      end
+    end
+  end)
+  client.stderr:read_start(function(err, chunk)
+    if err then client.errors[#client.errors + 1] = tostring(err) end
+    if chunk then client.errors[#client.errors + 1] = chunk end
+  end)
+  function client:request(method, parameters)
+    self.serial = self.serial + 1
+    local id = self.serial
+    assert(not self.exited, 'Embedded Neovim exited before ' .. method .. ': ' .. table.concat(self.errors))
+    self.stdin:write(vim.mpack.encode({ 0, id, method, parameters or {} }))
+    assert(vim.wait(20000, function() return self.responses[id] ~= nil or self.exited ~= nil or self.protocol_error ~= nil end, 10),
+      'Embedded Neovim RPC timed out: ' .. method)
+    assert(not self.protocol_error, self.protocol_error)
+    local response = self.responses[id]
+    assert(response, 'Embedded Neovim exited during ' .. method .. ': ' .. table.concat(self.errors))
+    self.responses[id] = nil
+    assert(response[3] == nil or response[3] == vim.NIL, 'Embedded API failure: ' .. vim.inspect(response[3]))
+    return response[4]
+  end
+  function client:lua(code, arguments) return self:request('nvim_exec_lua', { code, arguments or {} }) end
+  function client:shutdown()
+    if not self.exited then
+      pcall(self.stdin.write, self.stdin, vim.mpack.encode({ 2, 'nvim_command', { 'qa!' } }))
+      vim.wait(5000, function() return self.exited ~= nil end, 10)
+    end
+    if not self.exited then pcall(self.handle.kill, self.handle, 15); vim.wait(3000, function() return self.exited ~= nil end, 10) end
+    close(self.stdin); close(self.stdout); close(self.stderr); close(self.handle)
+  end
+  return client
+end
+local snapshot_code = [[
+  local dashboard = false
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == 'snacks_dashboard' then dashboard = true end
+  end
+  return { ready = vim.g.my_nvim_ready == true, root = require('config.project').root() or vim.NIL,
+    cwd = vim.fn.getcwd(), file = vim.api.nvim_buf_get_name(0), filetype = vim.bo.filetype,
+    argc = vim.fn.argc(-1), dashboard = dashboard, uis = #vim.api.nvim_list_uis() }
+]]
+local function ready(client)
+  local result
+  assert(vim.wait(20000, function()
+    result = client:lua(snapshot_code)
+    return result.ready
+  end, 20), 'Embedded configuration never became ready')
+  return result
+end
+local function attach(client)
+  client:request('nvim_ui_attach', { 120, 40, { ext_linegrid = true, rgb = true } })
+  return ready(client)
+end
+local function cleanup() for _, client in ipairs(children) do pcall(client.shutdown, client) end end
+local function run()
+  local headless = spawn({}, base, true)
+  local hidden = ready(headless)
+  assert(hidden.uis == 0 and not hidden.dashboard and hidden.root == vim.NIL, 'Headless no-argument startup rendered a welcome UI or bound a project')
+  headless:shutdown()
+
+  local home = spawn({}, base)
+  attach(home)
+  local home_state
+  assert(vim.wait(10000, function() home_state = home:lua(snapshot_code); return home_state.dashboard end, 20),
+    'No-argument startup did not render the real Snacks dashboard after UI attachment')
+  assert(home_state.root == vim.NIL and home_state.argc == 0 and home_state.uis == 1,
+    'Welcome UI inherited a project/file startup context')
+  assert(home.notifications > 0, 'The embedded UI never received actual redraw notifications')
+  home:shutdown()
+
+  local folder = vim.fs.joinpath(base, "目录 空格 &';$项目")
+  local launched = vim.fs.joinpath(base, 'marker-empty-project')
+  fn.mkdir(folder, 'p'); fn.mkdir(launched, 'p')
+  local file = vim.fs.joinpath(base, "单文件 空格 &';$.txt")
+  fn.writefile({ 'single-file startup fixture' }, file)
+  local single = spawn({ '--', file }, base)
+  local single_state = attach(single)
+  assert(single_state.root == vim.NIL and not single_state.dashboard and normalize(single_state.file) == normalize(file),
+    'Single-file startup showed the dashboard, activated a project, or changed its file path')
+  single:shutdown()
+
+  local directory = spawn({ '--', folder }, base)
+  attach(directory)
+  local directory_state
+  assert(vim.wait(10000, function()
+    directory_state = directory:lua(snapshot_code)
+    return directory_state.root ~= vim.NIL and directory_state.filetype == 'project_empty'
+  end, 20), 'Directory startup did not enter its explicit empty-project context')
+  assert(normalize(directory_state.root) == normalize(folder) and normalize(directory_state.cwd) == normalize(folder)
+    and not directory_state.dashboard and directory_state.argc == 0, 'Directory startup lost its root or opened netrw/home')
+  directory:shutdown()
+
+  local marker = spawn({ '--cmd', 'let g:my_nvim_project_launch = 1' }, launched)
+  attach(marker)
+  local marker_state
+  assert(vim.wait(10000, function()
+    marker_state = marker:lua(snapshot_code)
+    return marker_state.root ~= vim.NIL and marker_state.filetype == 'project_empty'
+  end, 20), 'Native launcher marker did not activate its working directory')
+  assert(normalize(marker_state.root) == normalize(launched) and normalize(marker_state.cwd) == normalize(launched)
+    and not marker_state.dashboard, 'Native project startup displayed the home screen')
+  marker:shutdown()
+  print('PASS project_startup: no headless home, real embedded welcome UI/redraw, single-file bypass, Unicode directory root, native-launch marker, empty-project view')
+end
+vim.schedule(function()
+  local ok, err = xpcall(run, debug.traceback)
+  cleanup()
+  if not ok then api.nvim_err_writeln(err); vim.cmd('cquit 1') else vim.cmd('qa!') end
+end)
