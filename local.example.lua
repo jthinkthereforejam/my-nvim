@@ -11,11 +11,10 @@ return {
   -- jacket = 'D:/tools/jacket/0.30.4',
   -- Extra tool directories to prepend to Neovim's process PATH:
   -- path = { 'D:/tools/bin' },
-  -- Optional integrated terminal settings (shell is an argv array):
+  -- Optional terminal settings: toggle replaces the current window buffer.
   -- terminal = {
   --   shell = { 'powershell.exe', '-NoLogo' }, -- macOS: { '/bin/zsh', '-l' }
-  --   height = 0.33, -- fraction of the editor height
-  --   toggle_key = '<C-j>', -- shared by normal, insert, and terminal modes
+  --   toggle_key = '<C-j>', -- return to this window's original code buffer
   -- },
   -- Project windows: reuse your named Windows Terminal profile by default.
   -- project = {

@@ -29,6 +29,9 @@ local function history_item(project, root)
   for _, entry in ipairs(project.history()) do if same(entry.root, root) then return entry end end
 end
 local function cleanup()
+  -- Exercise VimLeavePre while every code window is still covered by its live
+  -- terminal. Neovim owns PTY teardown on :qa; do not pre-stop these jobs.
+  if stage == 'session-save' then return end
   if original_launch then
     local native = require('config.project_native')
     native.launch, native.choose_folder, native.choose_file = original_launch, original_folder, original_file
@@ -172,28 +175,94 @@ local function functional(paths)
   assert(fn.isdirectory(paths.target) == 1 and fn.filereadable(target_file) == 1, 'Forgetting a recent project removed source files')
   print('PASS projects parent isolation: explicit root, modified buffer, windows/focus, real terminal job, LSP, native-dialog cancel, real Telescope recent selection')
 end
+local function saved_view(win)
+  return api.nvim_win_call(win, function()
+    local view = fn.winsaveview()
+    return { lnum = view.lnum, col = view.col, topline = view.topline, leftcol = view.leftcol }
+  end)
+end
 local function session_save(paths)
   local project = require('config.project')
   project.activate(paths.session, { restore = false, pick = false })
   local one, two = vim.fs.joinpath(paths.session, 'one.txt'), vim.fs.joinpath(paths.session, 'two.txt')
   local lines = {}; for index = 1, 160 do lines[index] = ('line %03d session fixture'):format(index) end
   fn.writefile(lines, one); fn.writefile(lines, two)
-  vim.cmd.edit(fn.fnameescape(one)); api.nvim_win_set_cursor(0, { 44, 3 })
-  vim.cmd.vsplit(fn.fnameescape(two)); api.nvim_win_set_cursor(0, { 22, 5 })
-  terminal_session()
+  vim.cmd.edit(fn.fnameescape(one))
+  local one_win, one_buf = api.nvim_get_current_win(), api.nvim_get_current_buf()
+  vim.cmd.vsplit(fn.fnameescape(two))
+  local two_win, two_buf = api.nvim_get_current_win(), api.nvim_get_current_buf()
+  api.nvim_win_call(one_win, function() fn.winrestview({ lnum = 44, col = 3, topline = 32, leftcol = 0 }) end)
+  api.nvim_win_call(two_win, function() fn.winrestview({ lnum = 22, col = 5, topline = 10, leftcol = 0 }) end)
+  local expected = { [normalize(one)] = saved_view(one_win), [normalize(two)] = saved_view(two_win) }
+  fn.writefile({ vim.json.encode(expected) }, vim.fs.joinpath(base, 'session-views.json'))
+
+  -- Each existing code split is now replaced, not supplemented, by a terminal.
+  api.nvim_set_current_win(one_win)
+  local first = terminal_session()
+  assert(api.nvim_get_current_win() == one_win and api.nvim_win_get_buf(one_win) == first.bufnr,
+    'First terminal must replace its code window in-place')
+  api.nvim_set_current_win(two_win)
+  local second = terminal_session()
+  assert(api.nvim_get_current_win() == two_win and api.nvim_win_get_buf(two_win) == second.bufnr,
+    'Second terminal must replace its code window in-place')
+  assert(#api.nvim_tabpage_list_wins(0) == 2 and #fn.win_findbuf(one_buf) == 0 and #fn.win_findbuf(two_buf) == 0,
+    'Session fixture must have no visible code window while both editors remain hidden')
+
   fn.setqflist({ { filename = one, lnum = 3, text = 'temporary quickfix' } })
   vim.cmd.copen()
+  local quickfix_win = api.nvim_get_current_win()
   local float_buf = api.nvim_create_buf(false, true)
-  api.nvim_open_win(float_buf, false, { relative = 'editor', row = 1, col = 1, width = 12, height = 2 })
-  assert(project.save_session(), 'ProjectSaveSession did not save the file workspace')
-  print('PASS project session saved with two file splits plus excluded terminal/quickfix/float fixtures')
+  local float_win = api.nvim_open_win(float_buf, false, { relative = 'editor', row = 1, col = 1, width = 12, height = 2 })
+  api.nvim_set_current_win(two_win)
+  vim.cmd.stopinsert()
+  local before, focus, views, display_options = windows(), api.nvim_get_current_win(), {}, {}
+  local mode = fn.mode(1)
+  local option_names = { 'number', 'relativenumber', 'signcolumn', 'cursorline', 'winfixheight' }
+  for _, entry in ipairs(before) do
+    local win = entry[1]
+    views[win], display_options[win] = saved_view(win), {}
+    for _, name in ipairs(option_names) do display_options[win][name] = api.nvim_get_option_value(name, { win = win }) end
+  end
+  assert(project.save_session(), 'ProjectSaveSession did not save the covered file workspace')
+  assert(api.nvim_get_current_win() == focus and vim.deep_equal(windows(), before),
+    'Session saving changed terminal windows, buffers or focus')
+  assert(fn.mode(1) == mode, 'Session saving changed the input mode')
+  for _, entry in ipairs(before) do
+    local win = entry[1]
+    assert(vim.deep_equal(saved_view(win), views[win]), 'Session saving changed a visible terminal/quickfix/float view')
+    for _, name in ipairs(option_names) do
+      assert(api.nvim_get_option_value(name, { win = win }) == display_options[win][name],
+        'Session saving changed a visible window option: ' .. name)
+    end
+  end
+  for _, session in ipairs({ first, second }) do
+    assert(api.nvim_buf_is_valid(session.bufnr) and fn.jobwait({ session.job }, 0)[1] == -1,
+      'Session saving stopped or replaced a terminal process')
+  end
+  local saved = table.concat(fn.readfile(require('config.project_session').file()), '\n')
+  assert(not saved:find('term://', 1, true), 'Saved session contains a terminal buffer')
+  local edited_one, edited_two = false, false
+  for _, line in ipairs(fn.readfile(require('config.project_session').file())) do
+    if line:find('edit ', 1, true) then
+      edited_one = edited_one or line:find('one.txt', 1, true) ~= nil
+      edited_two = edited_two or line:find('two.txt', 1, true) ~= nil
+    end
+  end
+  assert(edited_one and edited_two, 'Saved session must restore both code windows, not only hidden-buffer badd entries')
+  -- Remove only the temporary UI fixtures after checking save did not touch
+  -- them. Native mksession scales top lines when an excluded quickfix split
+  -- changes window heights; the exit regression must use the original geometry.
+  api.nvim_win_close(float_win, true)
+  api.nvim_win_close(quickfix_win, true)
+  assert(#api.nvim_tabpage_list_wins(0) == 2 and api.nvim_win_get_buf(one_win) == first.bufnr
+    and api.nvim_win_get_buf(two_win) == second.bufnr, 'Exit fixture must retain both terminal replacements')
+  print('PASS project session saved hidden code buffers/views behind two live terminal replacements; visible UI/jobs unchanged')
 end
 local function session_restore(paths)
   local project = require('config.project')
   local restored = project.activate(paths.session, { restore = true, pick = false })
   assert(restored, 'A second process did not find and restore the saved project session')
-  local expected = { [normalize(vim.fs.joinpath(paths.session, 'one.txt'))] = { 44, 3 },
-    [normalize(vim.fs.joinpath(paths.session, 'two.txt'))] = { 22, 5 } }
+  local expected = vim.json.decode(table.concat(fn.readfile(vim.fs.joinpath(base, 'session-views.json')), '\n'))
   local found = {}
   for _, win in ipairs(api.nvim_tabpage_list_wins(0)) do
     assert(api.nvim_win_get_config(win).relative == '', 'Session restored a floating window')
@@ -201,14 +270,15 @@ local function session_restore(paths)
     assert(vim.bo[buf].buftype == '', 'Session restored a terminal/quickfix window')
     local name = normalize(api.nvim_buf_get_name(buf))
     assert(expected[name], 'Session restored an unexpected buffer: ' .. api.nvim_buf_get_name(buf))
-    assert(vim.deep_equal(api.nvim_win_get_cursor(win), expected[name]), 'Session lost the saved cursor for ' .. name)
+    assert(vim.deep_equal(saved_view(win), expected[name]), 'Session lost the saved code view for ' .. name
+      .. ': ' .. vim.inspect({ expected = expected[name], actual = saved_view(win) }))
     found[name] = true
   end
   assert(vim.tbl_count(found) == 2 and #api.nvim_tabpage_list_wins(0) == 2, 'Session did not restore exactly two file splits')
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) then assert(vim.bo[buf].buftype ~= 'terminal' and vim.bo[buf].buftype ~= 'quickfix', 'Session revived an excluded buffer') end
   end
-  print('PASS project session restored across processes: two files, exact cursors/splits, no terminal/quickfix/float')
+  print('PASS project session restored across processes after direct :qa with live terminals: two code files, exact cursors/toplines/splits, no terminal/quickfix/float')
 end
 local function child_arguments()
   local early = ('lua vim.g.my_nvim_root=%q; vim.opt.rtp:prepend(%q); local m=require("config.machine").load(); m.project=vim.tbl_extend("force",m.project or {},{state_dir=%q})')

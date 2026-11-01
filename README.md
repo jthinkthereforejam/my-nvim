@@ -12,7 +12,7 @@
 - 可选 DeepSeek FIM 灰字补全；与普通补全菜单分开显示，配置本机 Key 后启用。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
-- 原生集成终端：底部约 1/3 面板，按项目保留多个 Shell 会话，显示/隐藏时保留任务与输出。
+- 原生集成终端：在当前窗口切换代码与终端 buffer，不改变现有分屏布局；按项目保留多个 Shell 会话，切回代码时保留任务与输出。
 - 全局默认不自动格式化，包括保存和 LSP 输入格式化。手动格式化可调用 `vim.lsp.buf.format()`；Jai 使用 `:Jai format`。
 
 ## 安装
@@ -62,8 +62,7 @@ bash scripts/install.sh
 | `path` | 加到 Neovim 进程 PATH 的工具目录列表 |
 | `proxy` | 可选 HTTP 代理，仅作用于 Neovim 及其下载子进程 |
 | `terminal.shell` | 可选 Shell argv 数组；Windows 默认 `{ 'powershell.exe', '-NoLogo' }`，macOS 默认用户登录 Shell |
-| `terminal.height` | 终端面板高度占比，默认 `0.33` |
-| `terminal.toggle_key` | 显示/隐藏快捷键，默认 `'<C-j>'` |
+| `terminal.toggle_key` | 当前窗口切换代码 / 终端的快捷键，默认 `'<C-j>'` |
 | `project.terminal_profile` | Windows Terminal 配置项名称，默认 `'Neovim'` |
 | `project.launcher` | 可选的新窗口启动器 argv 模板，覆盖平台默认启动器，见下文 |
 | `project.state_dir` | 本机项目历史与会话的存储根目录，默认 `stdpath('state')/my-nvim` |
@@ -79,12 +78,11 @@ bash scripts/install.sh
 ```lua
 terminal = {
   shell = { 'powershell.exe', '-NoLogo' },
-  height = 0.33,
   toggle_key = '<C-j>',
 },
 ```
 
-不指定 `terminal.shell` 时使用当前平台默认值；macOS 可省略它，沿用用户登录 Shell。修改 `toggle_key` 后，下面的 `Ctrl-j` 操作改用该按键。
+不指定 `terminal.shell` 时使用当前平台默认值；macOS 可省略它，沿用用户登录 Shell。修改 `toggle_key` 后，下面的 `Ctrl-j` 操作改用该按键。旧版 `local.lua` 中的 `terminal.height` 已忽略，可直接移除。
 
 Roslyn 固定 **5.12.0-1.26453.19**，通过微软 Azure feed 安装到 `stdpath('data')/tools/roslyn/<版本>`。Jacket 固定 **0.30.4**，默认安装到 `stdpath('data')/tools/jacket/0.30.4`，下载时验证仓库中固定的官方 SHA-256。设置 `jacket` 可复用已有完整工具链；服务器与 stdlib 应来自同一版本。
 
@@ -149,7 +147,7 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `[d` / `]d` | 上一条 / 下一条诊断 |
 | `<leader>q` | 诊断列表 |
 | `<leader>th` | 切换当前 buffer 的内联提示（服务器支持时） |
-| `Ctrl-j` / `<leader>tt` | 显示 / 隐藏终端面板；`Ctrl-j` 在普通、插入和终端模式均可用 |
+| `Ctrl-j` / `<leader>tt` | 在当前窗口切换代码 / 终端；`Ctrl-j` 在普通、插入和终端模式均可用 |
 | `<leader>tn` / `<leader>ts` | 新建终端 / 选择当前项目的终端 |
 | `<leader>tx` | 明确关闭当前终端并结束对应 Shell |
 | `Ctrl-w j` | 普通模式中移到下方窗口，保留原有窗口导航 |
@@ -202,12 +200,14 @@ export DEEPSEEK_API_KEY='YOUR_DEEPSEEK_API_KEY'
 
 ## 集成终端
 
-在代码区按 `Ctrl-j`，底部打开约占窗口高度 1/3 的终端，上方代码保持可见。Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 Shell。新 Shell 的工作目录优先使用首页打开的项目目录；普通文件启动取当前文件所属 Git 根，没有 Git 时取 Neovim 当前工作目录。
+在普通代码文件的当前窗口按 `Ctrl-j`，该窗口改为显示终端 buffer；现有的其他窗口、分屏尺寸与标签页保持不变。再次按 `Ctrl-j`，还原该窗口原来的代码 buffer、光标与滚动位置、窗口显示选项和编辑模式。从插入模式打开时，返回后继续插入。
 
-1. 在终端输入构建或运行命令。再次按 `Ctrl-j` 隐藏面板并返回代码；运行中的任务继续执行，Shell 当前目录、历史和输出保持不变。
-2. 再按 `Ctrl-j` 显示同一会话。面板可见时，即使焦点在代码区，这个按键也会将它隐藏。
-3. 用 `<leader>tn` 为当前项目另开一个终端；`<leader>ts` 打开 Telescope 列表，在已有会话和 `New terminal` 之间选择。在另一项目的代码 buffer 中操作时，会切换到该项目最近使用的终端。
-4. 需要结束会话时用 `<leader>tx`。它关闭对应 Shell 及其任务；隐藏面板请使用 `Ctrl-j`。
+Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 Shell。新 Shell 的工作目录优先使用首页打开的项目目录；普通文件启动取当前文件所属 Git 根，没有 Git 时取 Neovim 当前工作目录。
+
+1. 在终端输入构建或运行命令。按 `Ctrl-j` 切回代码后，运行中的 Shell 和任务继续执行，当前目录、历史与输出保持不变；再按可返回同一会话。
+2. 每个窗口独立切换和返回。同一项目的同一个终端会话可以在多个窗口显示；每个窗口分别记住自己的代码返回位置，切回时不影响其他窗口。
+3. 用 `<leader>tn` 为当前项目新建终端；`<leader>ts` 打开 Telescope 列表，在已有会话和 `New terminal` 之间选择。在终端中再次新建或选择会话，只替换当前窗口显示的终端，仍保留最初的代码返回目标。在另一项目的代码 buffer 中操作时，会使用该项目最近选择的终端。
+4. 需要结束会话时用 `<leader>tx`。它明确关闭对应 Shell 及其任务；暂时切回代码请使用 `Ctrl-j`。
 
 也可直接执行 `:TerminalToggle`、`:TerminalNew`、`:TerminalSelect`、`:TerminalClose`，分别对应切换、新建、选择和关闭。Shell 退出后保留输出并标记为 `Ended`，不会自动重启；用新建命令再次启动 Shell。会话仅在本次 Neovim 进程内保留，退出 Neovim 后不恢复。
 
@@ -278,21 +278,21 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/project_native.lua')
 
 这三项测试会自行退出。它们使用 cache 内的临时项目、真实子进程和嵌入式 UI 检查；启动器测试替换桌面启动步骤，不打开系统终端窗口。
 
-终端面板测试使用完整配置，在仓库根目录运行。Windows PowerShell：
+终端测试使用完整配置，在仓库根目录运行。Windows 的 PTY 输出测试请在 Windows Terminal / PowerShell 控制台中直接运行；重定向宿主标准流可能影响 ConPTY 输出捕获。Windows PowerShell：
 
 ```powershell
-nvim --headless -u .\init.lua -i NONE -l .\tests\terminal.lua
-nvim --headless -u .\init.lua -i NONE -l .\tests\terminal_keys.lua
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/terminal.lua')"
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 ```
 
 macOS：
 
 ```bash
-nvim --headless -u ./init.lua -i NONE -l tests/terminal.lua
-nvim --headless -u ./init.lua -i NONE -l tests/terminal_keys.lua
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal.lua')"
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 ```
 
-手动验收时，在一个终端切换目录并运行持续任务，隐藏后确认代码区可编辑，再显示确认任务和目录保留；新建第二个终端并从列表切回，切换项目检查会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
+手动验收时，先打开两个代码分屏并记录布局；在其中一个窗口切换终端、切换目录并运行持续任务，再按 `Ctrl-j` 检查原 buffer、光标、滚动位置、显示选项与编辑模式恢复，其他窗口布局不变。再次切换后检查任务和目录保留；新建第二个终端并从列表切回，确认返回目标仍是最初的代码。再检查两个窗口显示同一会话时分别返回、不同项目的会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
 
@@ -300,18 +300,24 @@ nvim --headless -u ./init.lua -i NONE -l tests/terminal_keys.lua
 
 Windows 的真实 Minuet / curl / 本机 HTTP 模拟端点与嵌入式 UI 测试通过：无 Key 零请求、环境变量优先、敏感 buffer 排除、Unicode 上下文长度、800ms 防抖、过期与接受竞态、取消后断开 HTTP、401 / 429 / 500 / 非法响应、错误节流和 5 秒超时均已验证。真实按键覆盖 Tab 菜单优先、Ctrl-l、Ctrl-y、Esc、Enter、片段和命令行回退。
 
-另在新开的 Windows Terminal 实例中，通过 RPC 检查外部 TUI：C++ / Rust / C# / Jai 的语言服务器均初始化并支持普通补全，各文件中 Minuet 的行内灰字标记可见；Ctrl-j 打开终端会取消 AI 请求，隐藏后 PowerShell 任务仍运行且代码未修改。测试实例及本地模拟服务均已清理，原用户实例未操作。没有配置真实 Key，因此未调用 DeepSeek 付费接口；macOS 尚未实机验证。
+另在新开的 Windows Terminal 实例中，通过 RPC 检查外部 TUI（其中终端切换检查基于当时的历史面板版本）：C++ / Rust / C# / Jai 的语言服务器均初始化并支持普通补全，各文件中 Minuet 的行内灰字标记可见；Ctrl-j 打开终端会取消 AI 请求，隐藏后 PowerShell 任务仍运行且代码未修改。测试实例及本地模拟服务均已清理，原用户实例未操作。没有配置真实 Key，因此未调用 DeepSeek 付费接口；macOS 尚未实机验证。
 ### 2026-11-01 首页与项目验收
 
-自动测试覆盖首页渲染与更新、文件参数跳过首页、目录 / 原生启动标记、空项目提示；独立进程会话恢复、父实例状态保留、并发 MRU；Unicode / 特殊字符路径、启动参数、环境隔离与对话框取消。Windows Terminal 真实窗口已确认首页显示、新窗口打开中文 / 空格 / 特殊字符目录、A 的未保存文本和后台 PowerShell 保持原样、B 跨进程恢复双文件分屏与光标、关闭 A 后 B 独立可用。真实桌面终端回归测试通过。系统对话框已验证 COM 声明编译及选择 / 取消 / 错误回调；实际对话框交互尚需手动检查。macOS 仅完成脚本静态检查与启动参数测试，尚未实机验证。
+自动测试覆盖首页渲染与更新、文件参数跳过首页、目录 / 原生启动标记、空项目提示；独立进程会话恢复、父实例状态保留、并发 MRU；Unicode / 特殊字符路径、启动参数、环境隔离与对话框取消。Windows Terminal 真实窗口已确认首页显示、新窗口打开中文 / 空格 / 特殊字符目录、A 的未保存文本和后台 PowerShell 保持原样、B 跨进程恢复双文件分屏与光标、关闭 A 后 B 独立可用。当时的终端面板版本通过了真实桌面回归测试。系统对话框已验证 COM 声明编译及选择 / 取消 / 错误回调；实际对话框交互尚需手动检查。macOS 仅完成脚本静态检查与启动参数测试，尚未实机验证。
 
 macOS 实机验收流程（仓库根目录）：先执行上面的三个 `project_*` / `projects.lua` 测试，再运行 `nvim` 检查首页。按 `o` 取消目录对话框，确认首页未变；再次选择含中文、空格或单引号的空目录，检查新 Terminal 窗口与空项目提示。首次启动可能需要允许 Terminal 自动化，由用户在系统提示中决定。
 
 在项目 A 中编辑文本但不保存，用 `Ctrl-j` 运行 `sleep 30; printf 'done\n'` 后隐藏；用 `:ProjectOpen /path/to/B` 打开另一个非 Git 文件夹，确认 A 的修改与任务仍在。B 打开两个文件并分屏，移动光标，执行 `:ProjectSaveSession`、`:qa`，再从首页打开 B，检查文件、光标与分屏恢复且没有终端；关闭 A 后继续编辑 B。最后分别运行 `nvim /path/to/file` 与 `nvim /path/to/B`，检查文件启动跳过首页，目录启动恢复项目。
 
-### 2026-11-01 集成终端验收
+### 2026-11-01 当前窗口终端验收
 
-Windows PowerShell 的会话复用、隐藏期间输出、目录保持、项目隔离、多会话选择、退出输出保留和窗口恢复均通过；普通、插入、终端模式的实际 Ctrl-j 分发及返回模式也通过。在真实 Windows Terminal 中另行确认了隐藏后 Shell 持续运行、重开复用原 job，且原代码文件没有修改。macOS 分支尚未实机验证。
+Windows 自动测试已验证当前窗口替换而非新增分屏、未保存文本与视口/显示选项保留、同项目多会话、多窗口各自返回来源、真实后台输出和目录保持、Telescope 选择、退出输出、手动换 buffer / 关闭窗口 / 删除终端后的恢复。关闭共享会话会先还原各窗口，再结束 Shell；原生 `:bdelete` 仍可能关闭同 buffer 的重复窗口，原代码 buffer 保持可用。
+
+项目会话回归已验证两个代码窗口都被终端覆盖时，手动保存不改变终端视图或任务；直接退出后，新进程恢复原代码文件、分屏、光标和视口，不恢复终端。另在独立 Windows Terminal 的默认 PowerShell 中，验证了 Ctrl-j 在普通/插入/终端模式切换、同一窗口 ID/尺寸、行中与行尾位置、上下移动列保持、首页切回、隐藏期间任务继续输出。macOS 提供上述同套测试命令，尚未实机验证。
+
+### 2026-11-01 集成终端验收（历史面板版本）
+
+以下结果针对当时的终端面板实现，不作为当前窗口切换实现的验证结果。Windows PowerShell 的会话复用、隐藏期间输出、目录保持、项目隔离、多会话选择、退出输出保留和窗口恢复均通过；普通、插入、终端模式的实际 Ctrl-j 分发及返回模式也通过。在真实 Windows Terminal 中另行确认了隐藏后 Shell 持续运行、重开复用原 job，且原代码文件没有修改。macOS 分支尚未实机验证。
 
 ### 2026-10-30 Windows 实机验收
 

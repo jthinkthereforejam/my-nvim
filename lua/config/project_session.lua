@@ -34,7 +34,9 @@ function M.save()
   local ok, err = xpcall(function()
     vim.opt.sessionoptions = session_options
     persistence.fire('SavePre')
-    persistence.save()
+    -- Tracked terminals temporarily cover their editor buffers in-place. Save
+    -- the code layout without closing jobs or changing the user's visible UI.
+    require('config.terminal').with_editors(function() persistence.save() end)
   end, debug.traceback)
   current_file = session_file
   if ok then
