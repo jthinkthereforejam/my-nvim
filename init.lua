@@ -31,4 +31,5 @@ require('config.project').setup(machine)
 require('config.welcome').setup(machine)
 require('config.autosave').setup(machine)
 require('config.explorer').setup(machine)
+require('config.git').setup()
 vim.g.my_nvim_ready = true

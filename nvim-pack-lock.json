@@ -15,6 +15,11 @@
       "src": "https://github.com/dmtrKovalenko/fff",
       "version": "'v0.11.0'"
     },
+    "gitsigns.nvim": {
+      "rev": "a462f416e2ce4744531c6256252dee99a7d34a83",
+      "src": "https://github.com/lewis6991/gitsigns.nvim",
+      "version": "'v2.1.0'"
+    },
     "jacket.nvim": {
       "rev": "46e43ce67c239de1cb2529f0b8401eaa2355d606",
       "src": "https://github.com/matteopolak/jacket.nvim",

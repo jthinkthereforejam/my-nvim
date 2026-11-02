@@ -240,6 +240,8 @@ function M.focus()
     p:focus('list')
   end
 end
+-- Shared target for project pickers; preserves sidebar and terminal jobs.
+function M.edit_window() return to_main(picker(), true) end
 function M.status()
   local p = picker()
   return { visible = p ~= nil, picker = p, window = p and p.list.win.win or nil,

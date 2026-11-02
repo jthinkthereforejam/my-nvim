@@ -7,7 +7,7 @@ function M.setup()
   vim.opt.number = true
   vim.opt.relativenumber = true
   vim.opt.cursorline = true
-  vim.opt.signcolumn = 'yes'
+  vim.opt.signcolumn = 'yes:2'
   vim.opt.termguicolors = true
   vim.opt.mouse = 'a'
   vim.opt.breakindent = true

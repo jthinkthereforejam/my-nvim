@@ -18,6 +18,7 @@ function M.setup(_machine)
     triggers = { { '<auto>', mode = 'nxso' }, { 'g', mode = 'n' } },
     spec = {
       { 'gr', group = 'LSP' },
+      { '<leader>g', group = 'Git' },
       { '<leader>s', group = 'Search' },
       { '<leader>p', group = 'Project' },
       { '<leader>t', group = 'Terminal / Toggle' },

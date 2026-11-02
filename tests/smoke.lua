@@ -15,7 +15,7 @@ check('Neovim version and editor display', function()
   local version = vim.version()
   assert(version.major == 0 and version.minor == 12 and version.patch == 6, 'expected 0.12.6')
   assert(vim.o.number and vim.o.relativenumber and vim.o.cursorline)
-  assert(vim.o.signcolumn == 'yes', 'diagnostic column must remain fixed')
+  assert(vim.o.signcolumn == 'yes:2', 'Git and diagnostic columns must remain fixed')
   assert(vim.g.mapleader == ' ')
   assert(vim.g.colors_name == 'everforest' and vim.o.background == 'dark')
   assert(vim.g.everforest_background == 'medium')
@@ -38,6 +38,25 @@ check('Plugin lock matches installed revisions', function()
   assert(count > 0, 'no active plugins')
   local fff = assert(lock.plugins['fff.nvim'], 'FFF missing from lock')
   assert(fff.version == "'v0.11.0'", 'FFF must follow exactly v0.11.0')
+  local gitsigns = assert(lock.plugins['gitsigns.nvim'], 'Gitsigns missing from lock')
+  assert(gitsigns.version == "'v2.1.0'", 'Gitsigns must follow exactly v2.1.0')
+end)
+
+check('Git display configuration and entry points', function()
+  local config = require('gitsigns.config').config
+  assert(config.base == 'HEAD', 'Git signs must compare against HEAD')
+  assert(config.signcolumn and config.attach_to_untracked, 'Git signs/untracked files must be enabled')
+  for name, text in pairs({ add = '+', change = '~', delete = '_', topdelete = '^' }) do
+    assert(config.signs[name].text == text, 'unexpected Git sign: ' .. name)
+  end
+  local commands = vim.api.nvim_get_commands({})
+  for _, name in ipairs({ 'GitDiffToggle', 'GitChanges' }) do
+    assert(commands[name], 'missing Git command: ' .. name)
+  end
+  for _, keys in ipairs({ ' gp', ' gd', ' gs', ' gt' }) do
+    local mapping = vim.fn.maparg(keys, 'n', false, true)
+    assert(mapping.callback or mapping.rhs and mapping.rhs ~= '', 'missing Git key: ' .. keys)
+  end
 end)
 
 for language, source in pairs({

@@ -36,7 +36,9 @@ function M.save()
     persistence.fire('SavePre')
     -- Tracked terminals temporarily cover their editor buffers in-place. Save
     -- the code layout without closing jobs or changing the user's visible UI.
-    require('config.terminal').with_editors(function() persistence.save() end)
+    require('config.git_diff').with_editors(function()
+      require('config.terminal').with_editors(function() persistence.save() end)
+    end)
   end, debug.traceback)
   current_file = session_file
   if ok then

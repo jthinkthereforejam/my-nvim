@@ -4,7 +4,7 @@
 
 ## 已配置
 
-- Everforest 深色、medium 背景；绝对/相对行号、当前行高亮、固定诊断栏。
+- Everforest 深色、medium 背景；绝对/相对行号、当前行高亮、固定两列 Git / 诊断标记栏。
 - 默认使用空格缩进，缩进与 Tab 宽度均为 4；项目的 EditorConfig 或文件 modeline 可显式覆盖。
 - `vim.pack` 管理插件；版本及实际提交记在 `nvim-pack-lock.json`，普通启动不更新插件。
 - Snacks 首页显示最近项目，系统对话框打开文件夹/文件；每个项目使用独立 Neovim 窗口，persistence 恢复代码布局。
@@ -12,6 +12,7 @@
 - 可选 DeepSeek FIM 灰字补全；与普通补全菜单分开显示，配置本机 Key 后启用。
 - FFF **v0.11.0** 和同版本原生库；Telescope 文件回退与 ripgrep 内容搜索。
 - Snacks Explorer 左侧目录树，默认关闭；普通字符显示 Git / 诊断，支持文件操作及代码窗口焦点切换。
+- Gitsigns **v2.1.0** 显示相对 HEAD 的行标记；提供当前文件差异窗口和 Telescope Git 变更列表。
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
 - 原生集成终端：在当前窗口切换代码与终端 buffer，不改变现有分屏布局；按项目保留多个 Shell 会话，切回代码时保留任务与输出。
 - 默认自动保存：退出插入 / 替换模式后停顿 1 秒写入普通代码文件，可按实例关闭。
@@ -155,6 +156,10 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `[d` / `]d` | 上一条 / 下一条诊断 |
 | `<leader>q` | 诊断列表 |
 | `<leader>th` | 切换当前 buffer 的内联提示（服务器支持时） |
+| `<leader>gp` | 弹窗预览当前 Git 变更块 |
+| `<leader>gd` / `<leader>gs` | 当前文件与 HEAD 的差异窗口 / Git 变更列表 |
+| `<leader>gt` | 切换 Git 行标记 |
+| `[c` / `]c` | 上一块 / 下一块变更；diff 窗口中保留原生导航 |
 | `Ctrl-j` / `<leader>tt` | 在当前窗口切换代码 / 终端；`Ctrl-j` 在普通、插入和终端模式均可用 |
 | `<leader>tn` / `<leader>ts` | 新建终端 / 选择当前项目的终端 |
 | `<leader>tx` | 明确关闭当前终端并结束对应 Shell |
@@ -283,6 +288,16 @@ Windows 默认启动 `powershell.exe -NoLogo`；macOS 默认使用用户登录 S
 
 目录树不保存进项目代码会话，也不持久保存展开状态；重新启动 Neovim 后仍保持关闭，代码会话继续恢复原来的文件与布局。树内文件操作不会切换项目或启动新的 Neovim 进程；打开另一个项目仍使用首页或 `:ProjectOpen`。树中 `Ctrl-j` 使用原有集成终端，任务不会因树的显隐而结束。
 
+## Git 行标记与差异
+
+Git 行标记以 **HEAD** 为基准，包含当前文件已暂存、未暂存和 buffer 中未保存的修改。绿色 `+` 表示新增，黄色 `~` 表示修改，红色 `_` 表示删除，文件顶部删除使用 `^`；未跟踪文件显示绿色新增标记，被忽略文件不显示标记。左侧固定两列标记栏，让 Git 与 LSP 诊断并排显示。用 `<leader>gt` 切换行标记，`<leader>gp` 弹窗预览变更块，`[c` / `]c` 在变更块之间移动；原生 diff 窗口继续使用原生导航。
+
+`<leader>gd` 或 `:GitDiffToggle` 在左侧打开不可编辑的 HEAD 版本，右侧保留原来的可编辑 buffer，包含尚未保存的内容。再次执行会关闭差异视图并恢复原窗口布局，保留编辑内容。左侧是打开时的 HEAD 快照；提交或切换分支后，重新打开对比可刷新快照。
+
+`<leader>gs` 或 `:GitChanges` 打开 Telescope Git 状态列表，预览磁盘文件与 HEAD 的差异，选择文件后进入编辑；Tab / Shift-Tab 在插入和普通模式下分别选择下一项 / 上一项，不执行暂存。列表反映磁盘上的 Git 状态，只有 buffer 内的未保存修改可能尚未列出，可用当前文件差异窗口查看。Windows 项目路径含 `$` 时，当前锁定的 Telescope / Plenary 有路径处理限制，可改用 `:GitDiffToggle` 比较当前文件。
+
+这些命令不强制写盘；实际编辑仍受现有自动保存延迟控制，需要暂时保留未保存状态时可用 `:AutoSaveToggle` 暂停。提交、分支管理和复杂合并继续使用原有 Fork / Beyond Compare 工作流；配置没有新增 Neogit、Lazygit 或 Diffview。
+
 ## FFF 生命周期与回退
 
 通过首页打开的目录作为明确项目根；普通文件启动取当前文件向上找到的 Git 根，无 Git 时使用当前工作目录。FFF 第一次文件搜索创建索引，同会话重复打开复用索引；切换项目根时切换索引，新 Neovim 进程重新扫描文件。搜索频次/查询历史可持久保存。
@@ -322,6 +337,18 @@ nvim --clean --headless -l tests/cmdline_native.lua
 ```bash
 nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
+```
+
+Git 行标记与差异回归使用已安装的完整配置，在仓库根目录运行。Windows PowerShell：
+
+```powershell
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/git.lua')"
+```
+
+macOS 可运行同套测试，尚未实机验证：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/git.lua')"
 ```
 
 手动格式化回归使用已安装的完整配置，在仓库根目录运行。Windows PowerShell：
@@ -408,6 +435,12 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 手动验收时，先打开两个代码分屏并记录布局；在其中一个窗口切换终端、切换目录并运行持续任务，再按 `Ctrl-j` 检查原 buffer、光标、滚动位置、显示选项与编辑模式恢复，其他窗口布局不变。再次切换后检查任务和目录保留；新建第二个终端并从列表切回，确认返回目标仍是最初的代码。再检查两个窗口显示同一会话时分别返回、不同项目的会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-03 Git 行标记与差异验收
+
+Windows 的完整 `tests/git.lua` 已通过，退出码 0，无 SKIP。验证了 HEAD 基准下的已暂存 / 未暂存 / 未保存修改、未跟踪与新文件标记及提交后接管，Git 颜色与诊断共存，真实 Telescope 预览及插入 / 普通模式 Tab 不暂存且 index 不变。HEAD 左侧只读、右侧同一脏 buffer、切换 / 手动关闭后的几何与选项恢复，以及目录树、PowerShell 任务、跨进程代码会话、延迟自动保存和重命名配合均通过。基础 smoke 12 项与已有自动保存、格式化、项目、终端按键和目录树回归通过。
+
+另在独立新 Windows Terminal 中，通过 RPC 核对真实外部 TUI（120 × 30）、高亮和 buffer 元数据：`+` / `~` / `_` 使用绿 / 黄 / 红色，与 LSP 诊断在 `yes:2` 标记栏共存；`<leader>gd` 保留未保存内容并在关闭后还原窗口，`<leader>gs` 显示 HEAD 到磁盘的预览，Tab 只移动候选，磁盘与 index 未改。测试实例与窗口已清理，未操作原用户实例；以上不包含字体像素的肉眼验收。macOS 提供上面的同套命令，尚未实机验证。
 
 ### 2026-11-02 手动格式化验收
 
