@@ -15,7 +15,7 @@
 - which-key 普通文字、紧凑多列；`g` 菜单中 `r -> LSP` 优先，保留菜单滚动。
 - 原生集成终端：在当前窗口切换代码与终端 buffer，不改变现有分屏布局；按项目保留多个 Shell 会话，切回代码时保留任务与输出。
 - 默认自动保存：退出插入 / 替换模式后停顿 1 秒写入普通代码文件，可按实例关闭。
-- 全局默认不自动格式化，包括保存和 LSP 输入格式化。手动格式化可调用 `vim.lsp.buf.format()`；Jai 使用 `:Jai format`。
+- 全局默认不自动格式化，包括保存和 LSP 输入格式化。手动使用选区 `gw` / `gw{motion}` 格式化代码，`:Format` 格式化整文件；Jai 调用锁定的 Jacket jaifmt，其他语言使用已有 LSP。
 
 ## 安装
 
@@ -138,7 +138,7 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 
 - **C/C++**：clangd 自动读取 `compile_commands.json`、`compile_flags.txt`、`.clangd`；不要求 CMake，也不在全局设置语言标准或 SDK 参数。参见 [手动构建与编译数据库示例](examples/clangd/README.md)。多文件索引应使用编译数据库；统一参数文件不能提供完整后台索引。
 - **Rust**：使用官方 rustup 的 `rust-analyzer` 和 Cargo 项目，默认 `cargo check`，不额外安装 Rust 管理插件。需要时运行 `rustup component add rust-analyzer rust-src`。
-- **Jai**：使用 [Jacket 官方 Neovim 插件](https://github.com/matteopolak/jacket/blob/main/editors/nvim/README.md) 的语法文件和 `jailsp` 语义高亮。项目根放置 `jacket.toml`，其 `[project].entry` 应列出实际入口。`:checkhealth jai` 显示工具路径、版本和连接情况；Jai 格式化为手动 `:Jai format`。
+- **Jai**：使用 [Jacket 官方 Neovim 插件](https://github.com/matteopolak/jacket/blob/main/editors/nvim/README.md) 的语法文件和 `jailsp` 语义高亮。项目根放置 `jacket.toml`，其 `[project].entry` 应列出实际入口。`:checkhealth jai` 显示工具路径、版本和连接情况。手动 `gw` / `:Format` 调用该工具链的 jaifmt，原有 `:Jai format` 仍可格式化整文件。
 
 ## 按键与补全
 
@@ -150,6 +150,8 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 | `grr` / `gri` / `grt` | 引用 / 实现 / 类型定义 |
 | `K` | 悬浮说明 |
 | `grn` / `gra` | 重命名 / 代码操作 |
+| 选区 `gw` / 普通模式 `gw{motion}` | 格式化所选或 motion 涉及的整行代码 |
+| `gww` / `gwG` | 格式化当前行 / 当前行到文件末尾 |
 | `[d` / `]d` | 上一条 / 下一条诊断 |
 | `<leader>q` | 诊断列表 |
 | `<leader>th` | 切换当前 buffer 的内联提示（服务器支持时） |
@@ -167,6 +169,22 @@ Unity 验收：确认 `MonoBehaviour` / `UnityEngine` 类型可解析、项目�
 blink 插入模式：`Ctrl-Space` 打开补全，`Ctrl-n` / `Ctrl-p` 或方向键选择，`Ctrl-y` 确认，`Ctrl-e` 取消。AI 可用且启用时，Tab 优先确认可见的普通补全菜单，再接受 AI 灰字，最后执行片段跳转 / 原有 Tab 行为；`Ctrl-l` 直接尝试接受 AI，无候选时沿用原键。`Esc` 清除 AI 灰字并正常退出插入模式。AI 关闭或不可用时保留原有 Tab、`Ctrl-l` 行为；Enter 与 `Ctrl-y` 的行为不变。
 
 `:edit`、`:cd` 等命令行使用内置 Shell 风格补全：Tab 补公共前缀，方向键选择，Tab 确认目录并进入下一层；文件候选确认后仍需 Enter 执行命令。菜单关闭时，上下方向键继续浏览历史。
+
+## 手动格式化
+
+选择代码后按 `gw`，例如用 `V` 加 `j` / `k` 选行，再按 `gw`。字符选择和块选择也按涉及的**整行**格式化。普通模式的 `gw{motion}` 沿用 motion 操作方式，例如 `gww` 格式化当前行，`gwG` 格式化当前行到文件末尾。
+
+| 命令 | 功能 |
+| --- | --- |
+| `:Format` | 格式化整个当前文件 |
+| `:'<,'>Format` | 格式化上次选区涉及的整行；选中后按 `:` 会自动带上选区范围 |
+| `:5,12Format` | 格式化第 5 到 12 行 |
+
+Jai 使用锁定的 Jacket **0.30.4** jaifmt。该版本没有原生范围格式化，因此先用完整文件上下文计算结果，只应用完整落在选中行内的变更；若有变更跨越选区边界，本次不应用任何修改，并提示扩大选区或使用 `:Format`。原有 `:Jai format` 仍是整文件操作。
+
+其他语言使用当前连接的 LSP：整文件需要 `formatting`，选区需要 `rangeFormatting`。服务器不支持选区格式化时会提示使用 `:Format`；返回的修改跨越选区边界时也会拒绝应用。
+
+这些操作只在手动触发时运行，不增加插件，也不启用自动格式化。格式化造成的实际修改仍会按现有自动保存设置，在普通模式停顿后写盘；需要暂时保留未保存状态时，可用 `:AutoSaveToggle` 关闭自动保存，再手动 `:write`。
 
 ## 自动保存
 
@@ -306,6 +324,18 @@ nvim --headless -u ./init.lua -i NONE -l tests/fff_native.lua
 nvim --headless -u ./init.lua -i NONE -l tests/whichkey_native.lua
 ```
 
+手动格式化回归使用已安装的完整配置，在仓库根目录运行。Windows PowerShell：
+
+```powershell
+nvim --headless -u .\init.lua -i NONE -c "lua dofile('tests/formatting.lua')"
+```
+
+macOS 可运行同套测试，尚未实机验证：
+
+```bash
+nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/formatting.lua')"
+```
+
 Explorer 回归测试在仓库根目录运行，要求 `fd --version` 为 **8.4 或更新版本**。脚本使用 cache 下的临时项目与独立嵌入式 UI，无需 Python 或外部 API，并自行清理测试进程。Windows 请在正常 PowerShell 终端中运行，不重定向宿主标准流：
 
 ```powershell
@@ -378,6 +408,12 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 手动验收时，先打开两个代码分屏并记录布局；在其中一个窗口切换终端、切换目录并运行持续任务，再按 `Ctrl-j` 检查原 buffer、光标、滚动位置、显示选项与编辑模式恢复，其他窗口布局不变。再次切换后检查任务和目录保留；新建第二个终端并从列表切回，确认返回目标仍是最初的代码。再检查两个窗口显示同一会话时分别返回、不同项目的会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-02 手动格式化验收
+
+Windows 的完整 `tests/formatting.lua` 已通过，退出码 0，无 SKIP。真实 Jacket 验证了选区 `gw`、motion、Ex 范围与整文件格式化，以及撤销 / 重做、忽略规则、错误与跨边界拒绝；真实 clangd 验证选区只修改所选行及整文件格式化。不支持范围格式化时不回退为全文，跨行拼接等越界修改会被拒绝。格式化后 600 ms 磁盘未变，约 1 秒后由已有自动保存写盘；基础 smoke 11 项通过。
+
+另在独立新 Windows Terminal 实例中，通过 RPC 核对真实外部 TUI 与 buffer：Jai 的 `Vjgw` 只格式化选中两行，另一函数保持原样，随后 `:Format` 格式化剩余代码，操作后处于普通模式。测试实例已退出，未操作原用户实例。macOS 可运行上面的同套命令，尚未实机验证。
 
 ### 2026-11-01 文件树验收
 
