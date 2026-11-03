@@ -26,6 +26,20 @@ local function absolute(path)
   return vim.fs.normalize(vim.fn.fnamemodify(path, ':p'))
 end
 
+local function project_title(path)
+  -- Titles are plain data. Strip terminal controls, and escape statusline %
+  -- separately when installing Neovim's titlestring.
+  local name = vim.fs.basename(path)
+  if not name or name == '' then name = path end
+  return name:gsub('%c', ' ')
+end
+
+function M.set_project_title(path)
+  vim.o.titlestring = project_title(path):gsub('%%', '%%%%')
+  vim.o.titlelen = 0
+  vim.o.title = true
+end
+
 local function launch_context(kind, path)
   if kind ~= 'project' and kind ~= 'file' and kind ~= 'home' then
     return nil, 'Unknown launch kind: ' .. tostring(kind)
@@ -74,7 +88,12 @@ function M.build_launch(kind, path, platform)
     if type(profile) ~= 'string' or profile == '' then return nil, 'project.terminal_profile must be a nonempty string' end
     local executable = vim.fn.exepath('wt.exe')
     argv = { executable ~= '' and executable or 'wt.exe', '--window', 'new', 'new-tab',
-      '--profile', profile, '--startingDirectory', context.cwd, '--reloadEnvironment', '--', nvim }
+      '--profile', profile, '--startingDirectory', context.cwd, '--reloadEnvironment' }
+    if context.kind == 'project' then
+      -- Keep the project identity even while the embedded shell changes title.
+      vim.list_extend(argv, { '--title', project_title(context.cwd), '--suppressApplicationTitle' })
+    end
+    vim.list_extend(argv, { '--', nvim })
     vim.list_extend(argv, nvim_arguments(context, true))
     -- WT splits semicolons inside argv before parsing, even without a shell.
     -- Its Commandline::AddArg then removes this one escaping backslash.

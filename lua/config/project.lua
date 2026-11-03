@@ -96,6 +96,7 @@ function M.activate(path, options)
   session.configure(root)
   local restored = options.restore ~= false and session.load() or false
   vim.fn.chdir(root)
+  require('config.project_native').set_project_title(root)
   history.record(root)
   vim.api.nvim_exec_autocmds('User', { pattern = 'ProjectOpened', modeline = false, data = { root = root } })
   if not restored and options.pick ~= false and #vim.api.nvim_list_uis() > 0 then

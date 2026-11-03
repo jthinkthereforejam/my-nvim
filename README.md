@@ -114,6 +114,8 @@ Roslyn 固定 **5.12.0-1.26453.19**，通过微软 Azure feed 安装到 `stdpath
 
 Windows 默认通过 Windows Terminal 的 `Neovim` 配置项新开窗口。请在 Windows Terminal 设置中创建同名配置项，或将 `project.terminal_profile` 改为已有配置项名称。字体由该终端配置项决定，例如 Monaco；首页不需要 Nerd Font。macOS 默认在 Terminal.app 新开窗口，沿用 Terminal 的字体设置。
 
+明确打开的项目窗口以**文件夹名**作为标题，切换代码文件或集成终端后仍保持项目名；目录名中的 `%` 等字符按字面显示。首页与单文件窗口不主动设置项目标题，原实例保持原样。Windows 默认启动器会固定该项目标题；macOS 和自定义启动器需允许终端接收应用设置的标题。
+
 使用其他终端时，可在 `local.lua` 返回的 table 中设置启动器，例如：
 
 ```lua
@@ -422,7 +424,7 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/project_startup.lua'
 nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/project_native.lua')"
 ```
 
-这三项测试会自行退出。它们使用 cache 内的临时项目、真实子进程和嵌入式 UI 检查；启动器测试替换桌面启动步骤，不打开系统终端窗口。
+这三项测试会自行退出。它们使用 cache 内的临时项目、真实子进程和嵌入式 UI 检查；启动器测试替换桌面启动步骤，不打开系统终端窗口。启动测试还读取真实 `set_title` 通知，检查目录 / 启动标记、切换文件与终端、恢复会话后的项目标题，以及首页 / 单文件窗口的隔离。
 
 终端测试使用完整配置，在仓库根目录运行。Windows 的 PTY 输出测试请在 Windows Terminal / PowerShell 控制台中直接运行；重定向宿主标准流可能影响 ConPTY 输出捕获。Windows PowerShell：
 
@@ -441,6 +443,12 @@ nvim --headless -u ./init.lua -i NONE -c "lua dofile('tests/terminal_keys.lua')"
 手动验收时，先打开两个代码分屏并记录布局；在其中一个窗口切换终端、切换目录并运行持续任务，再按 `Ctrl-j` 检查原 buffer、光标、滚动位置、显示选项与编辑模式恢复，其他窗口布局不变。再次切换后检查任务和目录保留；新建第二个终端并从列表切回，确认返回目标仍是最初的代码。再检查两个窗口显示同一会话时分别返回、不同项目的会话隔离，最后明确关闭会话。Shell 自行退出时应保留 `Ended` 输出，新建后才能继续执行命令。
 
 语言测试在 Neovim cache 下创建临时项目，验证跨文件定义、引用、hover、completion、semantic tokens、实际重命名、错误诊断、代码操作和内联提示切换；可设置 `NVIM_TEST_LANGUAGES=cpp,rust,cs,jai` 选择子集。`tests/jai_project.lua` 另可通过 `NVIM_TEST_JAI_PROJECT` 指定 Latticeon checkout，仅读取真实项目进行跳转与诊断检查。
+
+### 2026-11-03 项目窗口标题验收
+
+Windows 的 `project_native.lua` 与 `project_startup.lua` 测试均通过：启动参数只给项目设置固定标题，控制字符被过滤，`%{…}` 按字面显示；真实嵌入式 UI 的 `set_title` 通知覆盖目录 / 原生启动标记、切换文件与集成终端、独立进程恢复会话，首页和单文件窗口不继承项目标题。
+
+另从专用首页通过原有打开文件夹流程启动新 Windows Terminal 窗口，实际窗口标题精确显示 `项目 空格 100%; %{1+1} &';$`，切换代码文件与默认 PowerShell 后仍保持项目名；原首页的内容、项目状态、cwd 和标题保持不变。测试使用独立实例，未操作原用户实例。macOS 已做启动参数测试，尚未实机验证标题。
 
 ### 2026-11-03 Git 行标记与差异验收
 

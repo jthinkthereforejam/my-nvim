@@ -4,17 +4,21 @@ assert(vim.g.my_nvim_ready, 'Load the my-nvim configuration before this test')
 local native = require('config.project_native')
 local api, fn = vim.api, vim.fn
 local base = vim.fs.joinpath(fn.stdpath('cache'), 'my-nvim-project-native-tests', tostring(vim.uv.os_getpid()))
-local folder = vim.fs.joinpath(base, "项目 空格 &';$目录")
+local folder = vim.fs.joinpath(base, "项目 空格 &';$%{1+1}目录")
 local file = vim.fs.joinpath(folder, "笔记 空格 &';$.txt")
 fn.mkdir(folder, 'p')
 fn.writefile({ 'native argument fixture' }, file)
 local original_spawn, original_system = vim.uv.spawn, vim.system
+local original_title = { title = vim.o.title, titlelen = vim.o.titlelen, titlestring = vim.o.titlestring }
+require('config.ai_completion').setup({ deepseek = { enabled = false } })
+vim.o.swapfile = false
 local original_environment = {}
 local removed = { 'NVIM', 'NVIM_LISTEN_ADDRESS', 'NVIM_LOG_FILE', 'NVIM_SERVERNAME', 'SERVERNAME', 'VIM', 'VIMRUNTIME', 'MYVIMRC' }
 for _, key in ipairs(removed) do original_environment[key] = vim.env[key] or false end
 local machine = require('config.machine').load()
 local function cleanup()
   vim.uv.spawn, vim.system = original_spawn, original_system
+  for name, value in pairs(original_title) do vim.o[name] = value end
   for key, value in pairs(original_environment) do vim.env[key] = value ~= false and value or nil end
   native.setup(machine)
 end
@@ -75,6 +79,13 @@ local function run()
     if platform == 'windows' then
       assert(contains(project.argv, '--window') == 1 and contains(project.argv, 'new') == 1,
         'Windows launch must request an independent terminal window')
+      local title_index
+      for index, argument in ipairs(project.argv) do if argument == '--title' then title_index = index end end
+      assert(title_index and decoded_windows(project.argv[title_index + 1]) == vim.fs.basename(folder)
+        and contains(project.argv, '--suppressApplicationTitle') == 1,
+        'WT project title must be a single literal folder name and resist child shell title changes')
+      assert(contains(single.argv, '--title') == 0 and contains(single.argv, '--suppressApplicationTitle') == 0,
+        'Single-file launch inherited the fixed project title')
       for index = 2, #single.argv do
         local argument = single.argv[index]
         for position = 1, #argument do
@@ -90,9 +101,21 @@ local function run()
     local home, home_error = native.build_launch('home', nil, platform)
     assert(home, home_error)
     assert(contains(home.argv, '--cmd') == 0 and contains(home.argv, file, decode) == 0, 'Home launch inherited a project/file argument')
+    assert(contains(home.argv, '--title') == 0 and contains(home.argv, '--suppressApplicationTitle') == 0,
+      'Home launch inherited the fixed project title')
     for _, key in ipairs(removed) do assert(home.env[key] == nil, 'Launch plan leaked ' .. key) end
   end
   assert(fn.getcwd() == parent_cwd and vim.env.PATH == parent_path, 'Constructing launch plans changed the parent process')
+  for name, value in pairs(original_title) do
+    assert(vim.o[name] == value, 'Constructing launch plans changed the parent title option ' .. name)
+  end
+  native.set_project_title(folder)
+  assert(vim.o.title and vim.o.titlelen == 0 and vim.o.titlestring == "项目 空格 &';$%%{1+1}目录",
+    'Project title did not preserve literal percent expressions')
+  native.set_project_title('synthetic/控制' .. string.char(27) .. '\n%{1+1}目录')
+  assert(vim.o.titlestring == '控制  %%{1+1}目录' and not vim.o.titlestring:find('%c'),
+    'Project title allowed control characters or an executable title expression')
+  for name, value in pairs(original_title) do vim.o[name] = value end
 
   native.setup({ project = { launcher = { 'terminal-app', '--cwd', '{cwd}', '--', '{nvim}', '{file}' } } })
   local custom = assert(native.build_launch('file', file, 'windows'))
@@ -147,7 +170,7 @@ local function run()
       assert(vim.json.decode(result.stdout).cancelled == true, 'Native helper did not return cancellation JSON')
     end
   end
-  print('PASS project_native: literal Unicode/special paths, WT semicolon quoting, macOS argv, custom launcher, detached spawn, isolated environment, dialog selection/cancel/errors, native Windows cancel helper')
+  print('PASS project_native: literal Unicode/special paths and titles, WT fixed project title/home-file isolation, control filtering, semicolon quoting, macOS argv, custom launcher, detached spawn, isolated environment, dialog selection/cancel/errors, native Windows cancel helper')
 end
 
 vim.schedule(function()
