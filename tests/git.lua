@@ -123,7 +123,7 @@ end
 local head, disk = {}, {}
 local function fixture()
   assert(vim.system({ 'git', 'init', '--quiet', root }, { text = true }):wait(10000).code == 0)
-  for line = 1, 28 do head[line] = ('HEAD line %02d'):format(line) end
+  for line = 1, 80 do head[line] = ('HEAD line %02d'):format(line) end
   write(root .. '/main 代码.txt', head)
   write(root .. '/staged.txt', { 'staged HEAD' })
   write(root .. '/other.txt', { 'other HEAD' })
@@ -241,8 +241,49 @@ local function changes(c,edited)
   same(index_hash(), index, 'Git status picker modified the index')
   print('PASS Git status: real HEAD/disk preview, i/n Tab navigation without staging, Enter preserves buffer/cwd/disk/index')
 end
+local function unfolded(c, message)
+  assert(c:lua([[
+    if vim.wo.diff or vim.wo.foldenable or vim.wo.foldmethod=='diff' then return false end
+    for row=1,vim.api.nvim_buf_line_count(0) do if vim.fn.foldclosed(row)~=-1 then return false end end
+    return true
+  ]]), message)
+end
+local function fold_regression(c)
+  c:input('<Esc>'); wait_for(function() return c:lua('return vim.api.nvim_get_mode().mode')=='n' end,'Fold fixture did not enter Normal mode')
+  local windows=c:lua([[
+    local source=vim.api.nvim_get_current_win()
+    vim.wo.foldmethod='manual'; vim.wo.foldenable=true; vim.wo.foldlevel=0; vim.cmd('12,24fold')
+    assert(vim.fn.foldclosed(12)==12,'Manual fold fixture did not close')
+    vim.cmd.vsplit()
+    local peer=vim.api.nvim_get_current_win()
+    assert(vim.wo.foldenable and vim.fn.foldclosed(12)==12,'Peer window did not retain its manual fold')
+    vim.api.nvim_set_current_win(source)
+    return {source=source,peer=peer}
+  ]])
+  assert(c:lua('return require("config.git_diff").toggle()'),'Fold regression diff refused to open')
+  wait_for(function() return c:lua('return require("config.git_diff").status().visible') end,'Fold regression diff did not open')
+  c:lua('vim.cmd.diffupdate()')
+  assert(c:lua('return require("config.git_diff").close()'),'Fold regression diff refused to close')
+  wait_for(function() return not c:lua('return require("config.git_diff").status().visible') end,'Fold regression diff did not close')
+  unfolded(c,'Diff close kept unchanged code folded')
+  assert(c:lua([[
+    local peer=...
+    local preserved=vim.wo[peer].foldenable and not vim.wo[peer].diff
+      and vim.api.nvim_win_call(peer,function() return vim.fn.foldclosed(12)==12 end)
+    -- foldlevel() reports 0 while folding is disabled. Briefly enable it to
+    -- prove close did not delete cached definitions with zE, then unfold again.
+    vim.wo.foldenable=true
+    local definitions=vim.fn.foldlevel(60)>0
+    vim.wo.foldenable=false
+    return preserved and definitions
+  ]],{windows.peer}),'Diff close deleted cached fold definitions or changed the peer window folds')
+  unfolded(c,'Checking retained fold definitions left folding enabled')
+  c:lua('vim.api.nvim_win_close(...,false)',{windows.peer})
+  assert(c:lua('return vim.api.nvim_get_current_win()')==windows.source,'Fold regression changed the source window')
+  print('PASS Git folds: close unfolds source, retains definitions, and preserves an independent window manual fold')
+end
 local function diff(c,edited)
-  c:lua([[vim.wo.wrap=true; vim.wo.foldmethod='manual'; vim.wo.scrolloff=3; require('config.terminal').new(); vim.cmd.stopinsert(); require('config.terminal').toggle()]])
+  c:lua([[vim.wo.wrap=true; vim.wo.foldmethod='manual'; vim.wo.foldenable=true; vim.wo.foldlevel=0; vim.cmd('12,24fold'); vim.wo.scrolloff=3; require('config.terminal').new(); vim.cmd.stopinsert(); require('config.terminal').toggle()]])
   wait_for(function() return c:lua('return vim.bo.buftype') == '' end, 'Fixture terminal did not return to its code buffer')
   local session = c:lua('return require("config.terminal").sessions()[1]'); assert(session and session.status=='running', 'Fixture terminal job did not survive hiding')
   c:input('<Esc>'); wait_for(function() return c:lua('return vim.api.nvim_get_mode().mode')=='n' end,'Terminal setup did not leave Normal mode')
@@ -250,6 +291,7 @@ local function diff(c,edited)
   wait_for(function() return c:lua('return require("config.explorer").status().visible') end, 'Tree did not open for diff coexistence')
   c:lua([[local e=require('config.explorer').status(); vim.api.nvim_set_current_win(e.main_win)]])
   local before = snapshot(c)
+  local closed = vim.deepcopy(before); closed.wins[tostring(before.win)].options.foldenable=false
   c:input(' gd'); wait_for(function() return c:lua('return require("config.git_diff").status().visible') end, 'HEAD diff did not open')
   local view = c:lua([[
     local s=require('config.git_diff').status(); return {visible=s.visible,left=s.left_win,right=s.right_win,buf=s.buf,snapshot=s.snapshot,
@@ -297,21 +339,24 @@ local function diff(c,edited)
   assert(c:lua('return require("config.project").save_session()'), 'Session could not save while HEAD diff/tree were visible')
   assert(c:lua('return require("config.git_diff").status().visible'), 'Saving a session closed the live diff')
   c:input(' gd'); wait_for(function() return not c:lua('return require("config.git_diff").status().visible') end, 'Diff toggle did not close')
-  same(snapshot(c), before, 'Diff toggle did not restore original window geometry/options/buffers')
+  same(snapshot(c), closed, 'Diff toggle did not restore window geometry/options while unfolding its source')
+  unfolded(c,'Diff toggle left the source folded')
   c:input(' gd'); wait_for(function() return c:lua('return require("config.git_diff").status().visible') end, 'Diff did not reopen')
   c:lua([[local s=require('config.git_diff').status(); vim.api.nvim_win_close(s.left_win,true)]])
   wait_for(function() return not c:lua('return require("config.git_diff").status().visible') end, 'Manually closing HEAD pane left an owned diff')
-  same(snapshot(c), before, 'Manual diff close did not restore window geometry/options')
+  same(snapshot(c), closed, 'Manual diff close did not restore window geometry/options while unfolding its source')
+  unfolded(c,'Manually closing the HEAD pane left the source folded')
   c:input(' gd'); wait_for(function() return c:lua('return require("config.git_diff").status().visible') end, 'Diff did not reopen before buffer switch')
   c:open('other.txt'); wait_for(function() return not c:lua('return require("config.git_diff").status().visible') end, 'Switching the source buffer did not close the owned diff')
   c:open('main 代码.txt')
-  assert(c:lua('return not vim.wo.diff and vim.wo.foldmethod~="diff"'), 'Returning to the source buffer resurrected cached native diff options')
+  unfolded(c,'Returning to the source buffer resurrected cached diff folds/options')
   same(c:lines(),edited,'Switching away from and back to a diff lost dirty code')
   c:input(' gd'); wait_for(function() return c:lua('return require("config.git_diff").status().visible') end, 'Diff did not reopen before terminal')
   c:input('<C-j>'); wait_for(function() return c:lua('return vim.bo.buftype') == 'terminal' end, 'Ctrl-J did not enter terminal from a Git diff')
   assert(not c:lua('return require("config.git_diff").status().visible'), 'Terminal switch left a stale HEAD diff')
   c:input('<C-j>'); wait_for(function() return c:lua('return vim.bo.buftype') == '' end, 'Ctrl-J did not restore code from terminal')
   same(c:lines(), edited, 'Terminal return after diff changed code')
+  unfolded(c,'Terminal return after diff restored a folded source')
   assert(c:lua('return require("config.terminal").sessions()[1].job')==session.job and c:lua('return require("config.terminal").sessions()[1].status')=='running', 'Git diff operations killed/replaced the terminal job')
   print('PASS Git diff: readonly HEAD/current unsaved buffer, left/right, toggle/manual close restoration, live tree/jobs, code-only session save')
   return before
@@ -335,7 +380,7 @@ end
 local function run()
   fixture(); local original_index=index_hash(); local c=spawn(false)
   assert(c:lua([[return vim.fn.exists(':GitChanges')==2 and vim.fn.exists(':GitDiffToggle')==2]]), 'Git commands are not installed')
-  local edited=signs(c); changes(c,edited); diff(c,edited)
+  local edited=signs(c); changes(c,edited); fold_regression(c); diff(c,edited)
   -- Reload the saved session in an independent owned process before rename.
   local restored=spawn(true)
   assert(restored:lua([[local wanted=...; local count,found=0,false; for _,w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do local b=vim.api.nvim_win_get_buf(w); if vim.wo[w].diff or vim.b[b].my_nvim_git_diff or vim.bo[b].buftype=='terminal' or vim.bo[b].filetype:match('^snacks_picker') then return false end; count=count+1; found=found or vim.fs.normalize(vim.api.nvim_buf_get_name(b)):lower()==vim.fs.normalize(wanted):lower() end; return found and count==1]], {root..'/main 代码.txt'}), 'Session did not restore the real single code window without HEAD/tree/terminal windows or diff flags')
